@@ -20,11 +20,19 @@ class Agent(ABC):
 
 
 class RandomAgent(Agent):
-    """Picks a random command, with a random valid target if needed."""
+    """Picks a random command, preferring to play cards / claim rewards before ending turn / proceeding."""
+
+    # Commands that should only be chosen when no other options remain
+    TERMINAL_TYPES = {"end_turn", "proceed"}
 
     def decide(self, gs: GameState, briefing: str) -> dict:
-        idx = random.randrange(len(gs.commands))
-        cmd = gs.commands[idx]
+        non_terminal = [
+            (i, cmd) for i, cmd in enumerate(gs.commands)
+            if cmd.get("type") not in self.TERMINAL_TYPES
+        ]
+        candidates = non_terminal if non_terminal else list(enumerate(gs.commands))
+
+        idx, cmd = random.choice(candidates)
         decision = {"action": idx}
         if cmd.get("requiresTarget") and gs.combat:
             enemies = gs.combat.enemies
