@@ -9,7 +9,7 @@ import logging
 from api import STS2API
 from state import GameState
 from renderer import render
-from llm import LLMAgent
+from llm import Agent, RandomAgent, LLMAgent
 
 logging.basicConfig(
     level=logging.INFO,
@@ -19,10 +19,10 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-def run(base_url: str = "http://localhost:8080", model: str = "claude-sonnet-4-20250514"):
+def run(base_url: str = "http://localhost:8080", agent_type: str = "random", model: str = "claude-sonnet-4-20250514"):
     api = STS2API(base_url)
     gs = GameState()
-    agent = LLMAgent(model)
+    agent: Agent = RandomAgent() if agent_type == "random" else LLMAgent(model)
 
     log.info("STS2 client starting. Waiting for game...")
 
@@ -54,11 +54,11 @@ def run(base_url: str = "http://localhost:8080", model: str = "claude-sonnet-4-2
         if gs.context in ("main_menu", "character_select"):
             agent.reset()
 
-        # Get LLM decision
+        # Get agent decision
         try:
-            decision = agent.decide(briefing, len(gs.commands))
+            decision = agent.decide(gs, briefing)
         except (json.JSONDecodeError, KeyError, ValueError) as e:
-            log.error(f"LLM returned invalid response: {e}. Retrying...")
+            log.error(f"Agent returned invalid response: {e}. Retrying...")
             continue
 
         action_idx = decision["action"]
@@ -89,7 +89,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="STS2 Agent Client")
     parser.add_argument("--url", default="http://localhost:8080", help="Server base URL")
-    parser.add_argument("--model", default="claude-sonnet-4-20250514", help="Claude model ID")
+    parser.add_argument("--agent", default="random", choices=["random", "llm"], help="Agent type")
+    parser.add_argument("--model", default="claude-sonnet-4-20250514", help="Claude model ID (for llm agent)")
     args = parser.parse_args()
 
-    run(base_url=args.url, model=args.model)
+    run(base_url=args.url, agent_type=args.agent, model=args.model)

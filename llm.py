@@ -1,45 +1,71 @@
-"""LLM decision-making interface for STS2 agent."""
+"""Agent interfaces for STS2 decision-making."""
 
 from __future__ import annotations
 import json
-import anthropic
-from prompts import SYSTEM_PROMPT
+import random
+from abc import ABC, abstractmethod
+
+from state import GameState
 
 
-class LLMAgent:
+class Agent(ABC):
+    @abstractmethod
+    def decide(self, gs: GameState, briefing: str) -> dict:
+        """Return {"action": index, "target"?: enemy_index}."""
+        ...
+
+    def reset(self) -> None:
+        """Called at the start of a new run."""
+        pass
+
+
+class RandomAgent(Agent):
+    """Picks a random command, with a random valid target if needed."""
+
+    def decide(self, gs: GameState, briefing: str) -> dict:
+        idx = random.randrange(len(gs.commands))
+        cmd = gs.commands[idx]
+        decision = {"action": idx}
+        if cmd.get("requiresTarget") and gs.combat:
+            enemies = gs.combat.enemies
+            if enemies:
+                decision["target"] = random.choice(enemies).index
+        return decision
+
+
+class LLMAgent(Agent):
     def __init__(self, model: str = "claude-sonnet-4-20250514"):
+        import anthropic
+        from prompts import SYSTEM_PROMPT
+        self.system_prompt = SYSTEM_PROMPT
         self.client = anthropic.Anthropic()
         self.model = model
         self.messages: list[dict] = []
 
-    def decide(self, briefing: str, num_commands: int) -> dict:
-        """Send the briefing to the LLM and get a structured action back."""
+    def decide(self, gs: GameState, briefing: str) -> dict:
         self.messages.append({"role": "user", "content": briefing})
 
         response = self.client.messages.create(
             model=self.model,
             max_tokens=256,
-            system=SYSTEM_PROMPT,
+            system=self.system_prompt,
             messages=self.messages,
         )
 
         text = response.content[0].text.strip()
         self.messages.append({"role": "assistant", "content": text})
 
-        # Parse the JSON response
-        # Handle markdown code blocks if the LLM wraps the JSON
         if text.startswith("```"):
             text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
 
         decision = json.loads(text)
 
-        # Validate
         action = decision["action"]
+        num_commands = len(gs.commands)
         if not isinstance(action, int) or action < 0 or action >= num_commands:
             raise ValueError(f"Invalid command index: {action} (valid: 0-{num_commands - 1})")
 
         return decision
 
     def reset(self) -> None:
-        """Clear conversation history (e.g., at start of new run)."""
         self.messages.clear()
