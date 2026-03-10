@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: transparent;
+    overflow: hidden;
+    width: 1920px;
+    height: 120px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: #fff;
+  }
+  #bar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 120px;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 80%, transparent 100%);
+  }
+  .stat {
+    text-align: center;
+    text-shadow: 2px 2px 6px rgba(0,0,0,0.8);
+  }
+  .label {
+    font-size: 20px;
+    font-weight: normal;
+    opacity: 0.8;
+  }
+  .value {
+    font-size: 36px;
+    font-weight: bold;
+    letter-spacing: 2px;
+  }
+</style>
+</head>
+<body>
+<div id="bar">
+  <div class="stat">
+    <div class="label">行动轮次</div>
+    <div class="value" id="round">0</div>
+  </div>
+  <div class="stat">
+    <div class="label">运行时间</div>
+    <div class="value" id="time">0:00:00</div>
+  </div>
+  <div class="stat">
+    <div class="label">最高分</div>
+    <div class="value" id="high-score">0</div>
+  </div>
+</div>
+<script>
+  // --- Timer ---
+  let startTime = null;
+  let elapsed = 0;
+  let running = false;
+  let rafId = null;
+  const timeEl = document.getElementById('time');
+
+  function fmt(ms) {
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  function tick() {
+    if (!running) return;
+    timeEl.textContent = fmt(elapsed + (performance.now() - startTime));
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function timerStart() {
+    if (running) return;
+    running = true;
+    startTime = performance.now();
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function timerPause() {
+    if (!running) return;
+    elapsed += performance.now() - startTime;
+    running = false;
+    if (rafId) cancelAnimationFrame(rafId);
+  }
+
+  function timerReset() {
+    timerPause();
+    elapsed = 0;
+    startTime = null;
+    timeEl.textContent = '0:00:00';
+  }
+
+  window.addEventListener('timer-control', function(event) {
+    const action = event.detail.action;
+    if (action === 'start') timerStart();
+    else if (action === 'pause') timerPause();
+    else if (action === 'reset') timerReset();
+    else if (action === 'restart') { timerReset(); timerStart(); }
+  });
+
+  // --- Round ---
+  const roundEl = document.getElementById('round');
+  window.addEventListener('round-update', function(event) {
+    roundEl.textContent = event.detail.value;
+  });
+
+  // --- High Score ---
+  const hsEl = document.getElementById('high-score');
+  window.addEventListener('high-score-update', function(event) {
+    hsEl.textContent = event.detail.value;
+  });
+</script>
+</body>
+</html>
