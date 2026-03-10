@@ -197,6 +197,20 @@ class RewardsOverlay:
 
 
 @dataclass
+class GameOverState:
+    victory: bool
+    seed: str
+    ascension: int
+    run_time: float
+    floor_reached: int
+    killed_by: str | None
+    score: int
+    character: str
+    deck_size: int
+    relic_count: int
+
+
+@dataclass
 class CharacterInfo:
     index: int
     name: str
@@ -227,7 +241,7 @@ class GameState:
     treasure: TreasureState | None = None
     overlay: CardSelectionOverlay | HandSelectionOverlay | RewardsOverlay | None = None
     overlay_type: str | None = None
-    game_over_victory: bool | None = None
+    game_over: GameOverState | None = None
     commands: list[dict[str, Any]] = field(default_factory=list)
     events_log: list[str] = field(default_factory=list)
 
@@ -251,7 +265,7 @@ class GameState:
         self.treasure = None
         self.overlay = None
         self.overlay_type = None
-        self.game_over_victory = None
+        self.game_over = None
         self.characters = None
         self.selected_character = None
 
@@ -287,7 +301,19 @@ class GameState:
         if "treasure" in raw:
             self._parse_treasure(raw["treasure"])
         if "game_over" in raw:
-            self.game_over_victory = raw["game_over"].get("victory", False)
+            go = raw["game_over"]
+            self.game_over = GameOverState(
+                victory=go.get("victory", False),
+                seed=go.get("seed", ""),
+                ascension=go.get("ascension", 0),
+                run_time=go.get("run_time", 0),
+                floor_reached=go.get("floor_reached", 0),
+                killed_by=go.get("killed_by"),
+                score=go.get("score", 0),
+                character=go.get("character", ""),
+                deck_size=go.get("deck_size", 0),
+                relic_count=go.get("relic_count", 0),
+            )
         if "character_select" in raw:
             self._parse_character_select(raw["character_select"])
         if "main_menu" in raw:

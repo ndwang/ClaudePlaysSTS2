@@ -19,7 +19,14 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-def run(base_url: str = "http://localhost:57541", agent_type: str = "random", model: str = "claude-sonnet-4-20250514"):
+SPEED_DELAYS = {
+    "fast": 0,
+    "normal": 1.0,
+    "slow": 3.0,
+}
+
+
+def run(base_url: str = "http://localhost:57541", agent_type: str = "random", model: str = "claude-sonnet-4-20250514", delay: float = 0):
     api = STS2API(base_url)
     gs = GameState()
     agent: Agent = RandomAgent() if agent_type == "random" else LLMAgent(model)
@@ -54,6 +61,10 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
         if gs.context in ("main_menu", "character_select"):
             agent.reset()
 
+        # Pause at game over for human review
+        if gs.context == "game_over":
+            input("Press Enter to continue...")
+
         # Get agent decision
         try:
             decision = agent.decide(gs, briefing)
@@ -67,6 +78,9 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             cmd["targetIndex"] = decision["target"]
 
         log.info(f"Action: {cmd}")
+
+        if delay > 0:
+            time.sleep(delay)
 
         # Execute
         try:
@@ -91,6 +105,7 @@ if __name__ == "__main__":
     parser.add_argument("--url", default="http://localhost:57541", help="Server base URL")
     parser.add_argument("--agent", default="random", choices=["random", "llm"], help="Agent type")
     parser.add_argument("--model", default="claude-sonnet-4-20250514", help="Claude model ID (for llm agent)")
+    parser.add_argument("--speed", default="normal", choices=SPEED_DELAYS.keys(), help="Decision speed (fast/normal/slow)")
     args = parser.parse_args()
 
-    run(base_url=args.url, agent_type=args.agent, model=args.model)
+    run(base_url=args.url, agent_type=args.agent, model=args.model, delay=SPEED_DELAYS[args.speed])

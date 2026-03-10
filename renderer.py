@@ -251,8 +251,17 @@ def _render_treasure(gs: GameState) -> str:
 
 
 def _render_game_over(gs: GameState) -> str:
-    result = "VICTORY" if gs.game_over_victory else "DEFEAT"
-    return f"GAME OVER: {result}"
+    go = gs.game_over
+    result = "VICTORY" if go.victory else "DEFEAT"
+    lines = [f"GAME OVER: {result}"]
+    lines.append(f"Character: {go.character} | Score: {go.score}")
+    lines.append(f"Floor: {go.floor_reached} | Seed: {go.seed} | Ascension: {go.ascension}")
+    minutes = int(go.run_time) // 60
+    seconds = int(go.run_time) % 60
+    lines.append(f"Time: {minutes}m{seconds}s | Deck: {go.deck_size} cards | Relics: {go.relic_count}")
+    if go.killed_by:
+        lines.append(f"Killed by: {go.killed_by}")
+    return "\n".join(lines)
 
 
 def _render_character_select(gs: GameState) -> str:
