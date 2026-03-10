@@ -65,6 +65,12 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
         if gs.context == "game_over":
             input("Press Enter to continue...")
 
+        # No commands available — server returned transient state
+        if not gs.commands:
+            log.warning("No commands available. Retrying in 3s...")
+            time.sleep(3)
+            continue
+
         # Get agent decision
         try:
             decision = agent.decide(gs, briefing)
