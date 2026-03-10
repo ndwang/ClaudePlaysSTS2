@@ -61,6 +61,14 @@ class Enemy:
 
 
 @dataclass
+class Orb:
+    index: int
+    name: str
+    passive_value: int
+    evoke_value: int
+
+
+@dataclass
 class CombatState:
     round: int
     energy: int
@@ -72,6 +80,8 @@ class CombatState:
     draw_pile_count: int
     discard_pile_count: int
     exhaust_pile_count: int
+    orb_slots: int
+    orbs: list[Orb]
 
 
 @dataclass
@@ -319,6 +329,11 @@ class GameState:
             for pw in c.get("playerPowers", [])
         ]
 
+        orbs = [
+            Orb(o["index"], o["name"], o["passiveValue"], o["evokeValue"])
+            for o in c.get("orbs", [])
+        ]
+
         self.combat = CombatState(
             round=c.get("round", 1),
             energy=c.get("energy", 0),
@@ -330,6 +345,8 @@ class GameState:
             draw_pile_count=c.get("drawPileCount", 0),
             discard_pile_count=c.get("discardPileCount", 0),
             exhaust_pile_count=c.get("exhaustPileCount", 0),
+            orb_slots=c.get("orbSlots", 0),
+            orbs=orbs,
         )
 
     def _parse_map(self, m: dict) -> None:

@@ -93,6 +93,14 @@ def _render_combat(gs: GameState) -> str:
         playable = "" if h.playable else " (unplayable)"
         lines.append(f"  [{h.index}] {h.name}({cost}) {h.description}{mark}{playable}")
 
+    # Orbs (Defect only)
+    if c.orb_slots > 0:
+        orb_strs = [f"{o.name}(passive:{o.passive_value} evoke:{o.evoke_value})" for o in c.orbs]
+        empty = c.orb_slots - len(c.orbs)
+        if empty > 0:
+            orb_strs.append(f"(empty)x{empty}" if empty > 1 else "(empty)")
+        lines.append(f"\nOrbs ({len(c.orbs)}/{c.orb_slots}): {', '.join(orb_strs)}")
+
     lines.append(f"\nDraw:{c.draw_pile_count} Discard:{c.discard_pile_count} Exhaust:{c.exhaust_pile_count}")
 
     # Player powers
