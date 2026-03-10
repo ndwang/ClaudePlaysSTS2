@@ -5,7 +5,7 @@ from typing import Any
 
 
 class STS2API:
-    def __init__(self, base_url: str = "http://localhost:8080"):
+    def __init__(self, base_url: str = "http://localhost:57541"):
         self.base_url = base_url
         self.session = requests.Session()
 

@@ -19,7 +19,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 
-def run(base_url: str = "http://localhost:8080", agent_type: str = "random", model: str = "claude-sonnet-4-20250514"):
+def run(base_url: str = "http://localhost:57541", agent_type: str = "random", model: str = "claude-sonnet-4-20250514"):
     api = STS2API(base_url)
     gs = GameState()
     agent: Agent = RandomAgent() if agent_type == "random" else LLMAgent(model)
@@ -88,7 +88,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="STS2 Agent Client")
-    parser.add_argument("--url", default="http://localhost:8080", help="Server base URL")
+    parser.add_argument("--url", default="http://localhost:57541", help="Server base URL")
     parser.add_argument("--agent", default="random", choices=["random", "llm"], help="Agent type")
     parser.add_argument("--model", default="claude-sonnet-4-20250514", help="Claude model ID (for llm agent)")
     args = parser.parse_args()
