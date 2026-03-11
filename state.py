@@ -293,7 +293,7 @@ class GameState:
         if "map" in raw:
             self._parse_map(raw["map"])
         if "event" in raw:
-            self._parse_event(raw)
+            self._parse_event(raw["event"])
         if "rest" in raw:
             self._parse_rest(raw["rest"])
         if "shop" in raw:
@@ -388,8 +388,7 @@ class GameState:
             available_nodes=nodes,
         )
 
-    def _parse_event(self, raw: dict) -> None:
-        ev = raw["event"]
+    def _parse_event(self, ev: dict) -> None:
         has_proceed = any(c.get("type") == "proceed" for c in self.commands)
         options = [
             EventOption(o["index"], o["label"], o.get("description", ""), o.get("locked", False))

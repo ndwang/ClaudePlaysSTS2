@@ -447,6 +447,7 @@ class LLMAgent(Agent):
                 "content": f"{briefing}\n\n{REFLECTION_PROMPT}",
             })
             self.messages.append({"role": "user", "content": tool_results})
+            self._pending_tool_use_id = None
             self._pending_kb_results = []
 
         # Use auto tool_choice so agent can call KB tools or just respond with text
