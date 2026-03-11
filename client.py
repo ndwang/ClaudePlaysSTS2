@@ -3,6 +3,7 @@
 from __future__ import annotations
 import os
 import re
+import signal
 import sys
 import time
 from api import STS2API
@@ -136,13 +137,26 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
     if recovered:
         print(f"{C.YELLOW}{C.BOLD}Recovered saved run state. Resuming...{C.RESET}")
 
+    shutdown_requested = False
+
+    def _signal_handler(signum, frame):
+        nonlocal shutdown_requested
+        if shutdown_requested:
+            print(f"\n{C.RED}{C.BOLD}Forced shutdown.{C.RESET}")
+            sys.exit(1)
+        shutdown_requested = True
+        print(f"\n{C.YELLOW}{C.BOLD}Shutdown requested. Will stop after current action completes...{C.RESET}")
+
+    signal.signal(signal.SIGINT, _signal_handler)
+    signal.signal(signal.SIGTERM, _signal_handler)
+
     game_over_seen = False
     round_num = 0
     round_counted = False  # track to avoid double-counting on retries
     print(f"{C.CYAN}{C.BOLD}STS2 client starting. Waiting for game...{C.RESET}")
 
     try:
-        while True:
+        while not shutdown_requested:
             # Wait for a decision point
             try:
                 raw = api.wait_for_state(timeout_ms=30000)

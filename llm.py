@@ -6,6 +6,7 @@ import logging
 import random
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 
 from state import GameState
@@ -129,7 +130,7 @@ class LLMAgent(Agent):
         self._pending_kb_results: list[dict] = []
         self.last_reasoning: str = ""
         self._summary: str = ""
-        self.on_reasoning_delta: callable | None = None  # callback(text) for real-time reasoning
+        self.on_reasoning_delta: Callable[[str], None] | None = None
 
         # Knowledge bases
         self.in_run_kb: dict[str, str] = {}
