@@ -89,12 +89,6 @@ def auto_resolve(gs: GameState) -> dict | None:
             if cmd.get("type") in ("start_run", "continue_run"):
                 return {"action": i}
 
-    # Character selected → auto embark
-    if gs.context == "character_select" and gs.selected_character:
-        for i, cmd in enumerate(commands):
-            if cmd.get("type") == "embark":
-                return {"action": i}
-
     # Shop not open → open first
     if gs.shop and not gs.shop.is_open:
         for i, cmd in enumerate(commands):
