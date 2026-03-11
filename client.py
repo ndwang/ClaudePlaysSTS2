@@ -125,6 +125,10 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
     if obs_reset:
         obs.reset()
 
+    # Attempt crash recovery for LLM agent
+    if isinstance(agent, LLMAgent) and agent.load_run_state():
+        print(f"{C.YELLOW}{C.BOLD}Recovered saved run state. Resuming...{C.RESET}")
+
     game_over_seen = False
     round_num = 0
     print(f"{C.CYAN}{C.BOLD}STS2 client starting. Waiting for game...{C.RESET}")

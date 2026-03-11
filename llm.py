@@ -10,6 +10,7 @@ from state import GameState
 
 
 KB_FILE = Path(__file__).parent / "knowledge.json"
+RUN_STATE_FILE = Path(__file__).parent / "run_state.json"
 
 PLAY_ACTION_TOOL = {
     "name": "play_action",
@@ -176,6 +177,53 @@ class LLMAgent(Agent):
                 text_parts.append(block.text.strip())
         return "\n".join(thinking_parts) if thinking_parts else "\n".join(text_parts)
 
+    @staticmethod
+    def _serialize_messages(messages: list[dict]) -> list[dict]:
+        """Convert messages to JSON-serializable dicts (handles Pydantic content blocks)."""
+        out = []
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, list):
+                serialized = []
+                for block in content:
+                    if hasattr(block, "model_dump"):
+                        serialized.append(block.model_dump())
+                    else:
+                        serialized.append(block)
+                out.append({"role": msg["role"], "content": serialized})
+            else:
+                out.append(msg)
+        return out
+
+    def save_run_state(self) -> None:
+        """Persist conversation state to disk for crash recovery."""
+        state = {
+            "messages": self._serialize_messages(self.messages),
+            "pending_tool_use_id": self._pending_tool_use_id,
+            "pending_kb_results": self._pending_kb_results,
+            "in_run_kb": self.in_run_kb,
+            "last_reasoning": self.last_reasoning,
+        }
+        RUN_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+
+    def load_run_state(self) -> bool:
+        """Load conversation state from disk. Returns True if state was loaded."""
+        try:
+            state = json.loads(RUN_STATE_FILE.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError, ValueError):
+            return False
+        self.messages = state.get("messages", [])
+        self._pending_tool_use_id = state.get("pending_tool_use_id")
+        self._pending_kb_results = state.get("pending_kb_results", [])
+        self.in_run_kb = state.get("in_run_kb", {})
+        self.last_reasoning = state.get("last_reasoning", "")
+        return True
+
+    @staticmethod
+    def clear_run_state() -> None:
+        """Remove saved run state file."""
+        RUN_STATE_FILE.unlink(missing_ok=True)
+
     def _process_kb_update(self, inp: dict) -> str:
         """Process an update_knowledge_base tool call, return result message."""
         store = inp.get("store", "in_run")
@@ -291,6 +339,7 @@ class LLMAgent(Agent):
             response = self.client.messages.create(**self._build_api_params())
             result = self._process_response(response, num_commands)
             if result is not None:
+                self.save_run_state()
                 return result
 
         raise RuntimeError(f"Agent failed to provide valid action after {self.MAX_RETRIES} retries")
@@ -363,11 +412,14 @@ class LLMAgent(Agent):
             if response.stop_reason == "end_turn":
                 break
 
+        self.save_run_state()
+
     def reset(self) -> None:
         self.messages.clear()
         self._pending_tool_use_id = None
         self._pending_kb_results = []
         self.last_reasoning = ""
         self.in_run_kb.clear()
+        self.clear_run_state()
         # cross_run_kb persists — reload in case it was updated externally
         self.cross_run_kb = _load_cross_run_kb()
