@@ -9,3 +9,8 @@ wheels/
 # Virtual environments
 .venv
 uv.lock
+
+.claude
+sts2agent.log
+obs/state.json
+knowledge.json

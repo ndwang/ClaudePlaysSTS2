@@ -82,6 +82,10 @@ class OBSOverlay:
         """Call when the agent is shutting down."""
         self._emit("timer-control", {"action": "pause"})
 
+    def on_reasoning(self, text: str) -> None:
+        """Push agent reasoning text to the OBS overlay."""
+        self._emit("reasoning-update", {"text": text})
+
     def on_game_over(self, score: int) -> None:
         """Call when game over is reached."""
         if score > self.high_score:

@@ -4,11 +4,78 @@ from __future__ import annotations
 import json
 import random
 from abc import ABC, abstractmethod
+from pathlib import Path
 
 from state import GameState
 
 
+KB_FILE = Path(__file__).parent / "knowledge.json"
+
+PLAY_ACTION_TOOL = {
+    "name": "play_action",
+    "description": "Execute a game action by its index from the available commands list.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "index": {
+                "type": "integer",
+                "description": "The command index from the Commands list",
+            },
+            "target": {
+                "type": "integer",
+                "description": "Target enemy index, required for cards/potions marked *target*",
+            },
+        },
+        "required": ["index"],
+    },
+}
+
+UPDATE_KB_TOOL = {
+    "name": "update_knowledge_base",
+    "description": "Add, update, or delete entries in your knowledge base. Use 'in_run' for current run notes (deck strategy, fight plans). Use 'cross_run' for lessons that apply to future runs.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "store": {
+                "type": "string",
+                "enum": ["in_run", "cross_run"],
+                "description": "Which knowledge base to update",
+            },
+            "operation": {
+                "type": "string",
+                "enum": ["set", "delete"],
+                "description": "Set (add/update) or delete an entry",
+            },
+            "key": {
+                "type": "string",
+                "description": "The entry key (short label)",
+            },
+            "value": {
+                "type": "string",
+                "description": "The entry value (required for 'set' operation)",
+            },
+        },
+        "required": ["store", "operation", "key"],
+    },
+}
+
+TOOLS = [PLAY_ACTION_TOOL, UPDATE_KB_TOOL]
+
+
+def _load_cross_run_kb() -> dict[str, str]:
+    try:
+        return json.loads(KB_FILE.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _save_cross_run_kb(kb: dict[str, str]) -> None:
+    KB_FILE.write_text(json.dumps(kb, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
 class Agent(ABC):
+    last_reasoning: str = ""
+
     @abstractmethod
     def decide(self, gs: GameState, briefing: str) -> dict:
         """Return {"action": index, "target"?: enemy_index}."""
@@ -16,6 +83,10 @@ class Agent(ABC):
 
     def reset(self) -> None:
         """Called at the start of a new run."""
+        pass
+
+    def reflect(self, briefing: str) -> None:
+        """Called after game over for post-run reflection."""
         pass
 
 
@@ -42,38 +113,261 @@ class RandomAgent(Agent):
 
 
 class LLMAgent(Agent):
-    def __init__(self, model: str = "claude-sonnet-4-20250514"):
+    MAX_RETRIES = 5
+
+    def __init__(self, model: str = "claude-sonnet-4-20250514", thinking_budget: int = 0):
         import anthropic
-        from prompts import SYSTEM_PROMPT
-        self.system_prompt = SYSTEM_PROMPT
         self.client = anthropic.Anthropic()
         self.model = model
+        self.thinking_budget = thinking_budget
         self.messages: list[dict] = []
+        self._pending_tool_use_id: str | None = None
+        self._pending_kb_results: list[dict] = []
+        self.last_reasoning: str = ""
+
+        # Knowledge bases
+        self.in_run_kb: dict[str, str] = {}
+        self.cross_run_kb: dict[str, str] = _load_cross_run_kb()
+
+    def _build_system_prompt(self) -> str:
+        from prompts import SYSTEM_PROMPT
+        parts = [SYSTEM_PROMPT]
+
+        if self.cross_run_kb:
+            lines = [f"- {k}: {v}" for k, v in self.cross_run_kb.items()]
+            parts.append("\n\n## Cross-Run Knowledge (persistent lessons)\n" + "\n".join(lines))
+
+        if self.in_run_kb:
+            lines = [f"- {k}: {v}" for k, v in self.in_run_kb.items()]
+            parts.append("\n\n## In-Run Knowledge (current run notes)\n" + "\n".join(lines))
+
+        return "".join(parts)
+
+    def _build_api_params(self) -> dict:
+        """Build API call parameters, varying by whether thinking is enabled."""
+        params = {
+            "model": self.model,
+            "system": self._build_system_prompt(),
+            "tools": TOOLS,
+            "messages": self.messages,
+        }
+        if self.thinking_budget > 0:
+            # Extended thinking: must use tool_choice=auto, model may not call tools
+            params["max_tokens"] = self.thinking_budget + 4000
+            params["tool_choice"] = {"type": "auto"}
+            params["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": self.thinking_budget,
+            }
+        else:
+            # No thinking: can force tool use
+            params["max_tokens"] = 1024
+            params["tool_choice"] = {"type": "any"}
+        return params
+
+    def _extract_reasoning(self, content: list) -> str:
+        """Extract reasoning from response: prefer thinking blocks, fall back to text."""
+        thinking_parts = []
+        text_parts = []
+        for block in content:
+            if block.type == "thinking":
+                thinking_parts.append(block.thinking)
+            elif block.type == "text" and block.text.strip():
+                text_parts.append(block.text.strip())
+        return "\n".join(thinking_parts) if thinking_parts else "\n".join(text_parts)
+
+    def _process_kb_update(self, inp: dict) -> str:
+        """Process an update_knowledge_base tool call, return result message."""
+        store = inp.get("store", "in_run")
+        operation = inp.get("operation", "set")
+        key = inp.get("key", "")
+        value = inp.get("value", "")
+
+        if not key:
+            return "Error: key is required."
+
+        kb = self.in_run_kb if store == "in_run" else self.cross_run_kb
+
+        if operation == "set":
+            if not value:
+                return "Error: value is required for 'set' operation."
+            kb[key] = value
+            if store == "cross_run":
+                _save_cross_run_kb(self.cross_run_kb)
+            return f"OK: {store}[{key}] = {value}"
+        elif operation == "delete":
+            if key in kb:
+                del kb[key]
+                if store == "cross_run":
+                    _save_cross_run_kb(self.cross_run_kb)
+                return f"OK: deleted {store}[{key}]"
+            return f"Warning: key '{key}' not found in {store}."
+        else:
+            return f"Error: unknown operation '{operation}'."
+
+    def _process_response(self, response, num_commands: int | None) -> dict | None:
+        """Process a response, handle KB calls, return action dict if play_action found.
+
+        Returns {"action": idx, ...} on valid play_action, None otherwise.
+        Appends any needed tool_result messages to self.messages for retry.
+        """
+        content = response.content
+        self.messages.append({"role": "assistant", "content": content})
+        self.last_reasoning = self._extract_reasoning(content)
+
+        # Collect all tool calls
+        tool_calls = [b for b in content if b.type == "tool_use"]
+
+        if not tool_calls:
+            # No tool call (can happen with thinking mode's tool_choice: auto)
+            self.messages.append({
+                "role": "user",
+                "content": "You must use the play_action tool to take your action.",
+            })
+            return None
+
+        # Process all tool calls, build tool_results
+        results = []
+        action_result = None  # Will be set if valid play_action found
+        play_action_block = None
+
+        for block in tool_calls:
+            if block.name == "update_knowledge_base":
+                msg = self._process_kb_update(block.input)
+                results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": msg,
+                })
+            elif block.name == "play_action" and num_commands is not None:
+                index = block.input.get("index")
+                if isinstance(index, int) and 0 <= index < num_commands:
+                    play_action_block = block
+                    action_result = {"action": index}
+                    if "target" in block.input:
+                        action_result["target"] = block.input["target"]
+                    # Don't add tool_result yet — it will be the next game state
+                else:
+                    results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": f"Error: Invalid command index {index}. Valid: 0-{num_commands - 1}.",
+                        "is_error": True,
+                    })
+
+        if action_result and play_action_block:
+            # Valid action found. Store KB results to prepend to next state delivery.
+            self._pending_tool_use_id = play_action_block.id
+            self._pending_kb_results = results
+            return action_result
+
+        # No valid play_action — send all results and retry
+        if results:
+            self.messages.append({"role": "user", "content": results})
+        else:
+            self.messages.append({
+                "role": "user",
+                "content": "You must use the play_action tool to take your action.",
+            })
+        return None
 
     def decide(self, gs: GameState, briefing: str) -> dict:
-        self.messages.append({"role": "user", "content": briefing})
+        # Build user message with tool_result(s)
+        if self._pending_tool_use_id is None:
+            self.messages.append({"role": "user", "content": briefing})
+        else:
+            tool_results = list(self._pending_kb_results)
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": self._pending_tool_use_id,
+                "content": briefing,
+            })
+            self.messages.append({"role": "user", "content": tool_results})
+            self._pending_kb_results = []
 
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=256,
-            system=self.system_prompt,
-            messages=self.messages,
-        )
-
-        text = response.content[0].text.strip()
-        self.messages.append({"role": "assistant", "content": text})
-
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-
-        decision = json.loads(text)
-
-        action = decision["action"]
         num_commands = len(gs.commands)
-        if not isinstance(action, int) or action < 0 or action >= num_commands:
-            raise ValueError(f"Invalid command index: {action} (valid: 0-{num_commands - 1})")
 
-        return decision
+        for _ in range(self.MAX_RETRIES):
+            response = self.client.messages.create(**self._build_api_params())
+            result = self._process_response(response, num_commands)
+            if result is not None:
+                return result
+
+        raise RuntimeError(f"Agent failed to provide valid action after {self.MAX_RETRIES} retries")
+
+    def reflect(self, briefing: str) -> None:
+        """Post-run reflection: agent reviews the run and updates cross-run KB."""
+        from prompts import REFLECTION_PROMPT
+
+        # Send game over state + reflection prompt
+        if self._pending_tool_use_id is None:
+            self.messages.append({"role": "user", "content": f"{briefing}\n\n{REFLECTION_PROMPT}"})
+        else:
+            tool_results = list(self._pending_kb_results)
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": self._pending_tool_use_id,
+                "content": f"{briefing}\n\n{REFLECTION_PROMPT}",
+            })
+            self.messages.append({"role": "user", "content": tool_results})
+            self._pending_kb_results = []
+
+        # Use auto tool_choice so agent can call KB tools or just respond with text
+        params = {
+            "model": self.model,
+            "system": self._build_system_prompt(),
+            "tools": TOOLS,
+            "messages": self.messages,
+            "max_tokens": 2048,
+            "tool_choice": {"type": "auto"},
+        }
+        if self.thinking_budget > 0:
+            params["max_tokens"] = self.thinking_budget + 2048
+            params["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": self.thinking_budget,
+            }
+
+        for _ in range(3):
+            response = self.client.messages.create(**params)
+            content = response.content
+            self.messages.append({"role": "assistant", "content": content})
+            self.last_reasoning = self._extract_reasoning(content)
+
+            # Process any KB updates
+            tool_calls = [b for b in content if b.type == "tool_use"]
+            if not tool_calls:
+                break  # Agent responded with text only — reflection done
+
+            results = []
+            for block in tool_calls:
+                if block.name == "update_knowledge_base":
+                    msg = self._process_kb_update(block.input)
+                    results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": msg,
+                    })
+                elif block.name == "play_action":
+                    results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": "No action needed during reflection.",
+                        "is_error": True,
+                    })
+
+            if results:
+                self.messages.append({"role": "user", "content": results})
+
+            # If stop_reason is end_turn or no more tool calls expected, break
+            if response.stop_reason == "end_turn":
+                break
 
     def reset(self) -> None:
         self.messages.clear()
+        self._pending_tool_use_id = None
+        self._pending_kb_results = []
+        self.last_reasoning = ""
+        self.in_run_kb.clear()
+        # cross_run_kb persists — reload in case it was updated externally
+        self.cross_run_kb = _load_cross_run_kb()

@@ -5,7 +5,6 @@ import os
 import re
 import sys
 import time
-import json
 from api import STS2API
 from state import GameState
 from renderer import render
@@ -68,15 +67,60 @@ SPEED_DELAYS = {
 }
 
 
+def auto_resolve(gs: GameState) -> dict | None:
+    """Return action dict if the state can be auto-resolved without the agent."""
+    commands = gs.commands
+    if not commands:
+        return None
+
+    cmd_types = {cmd.get("type") for cmd in commands}
+
+    # Only proceed/continue available → just do it
+    if cmd_types <= {"proceed", "continue"}:
+        for i, cmd in enumerate(commands):
+            if cmd.get("type") in ("proceed", "continue"):
+                return {"action": i}
+
+    # Main menu → start or continue run
+    if gs.context == "main_menu":
+        for i, cmd in enumerate(commands):
+            if cmd.get("type") in ("start_run", "continue_run"):
+                return {"action": i}
+
+    # Character selected → auto embark
+    if gs.context == "character_select" and gs.selected_character:
+        for i, cmd in enumerate(commands):
+            if cmd.get("type") == "embark":
+                return {"action": i}
+
+    # Shop not open → open first
+    if gs.shop and not gs.shop.is_open:
+        for i, cmd in enumerate(commands):
+            if cmd.get("type") == "shop_open":
+                return {"action": i}
+
+    # Rewards → auto-claim gold and relics
+    if gs.overlay_type == "rewards" and gs.overlay:
+        for i, cmd in enumerate(commands):
+            if cmd.get("type") == "select_reward":
+                reward_idx = cmd.get("rewardIndex")
+                for r in gs.overlay.rewards:
+                    if r.index == reward_idx and r.reward_type in ("gold", "relic"):
+                        return {"action": i}
+
+    return None
+
+
 def run(base_url: str = "http://localhost:57541", agent_type: str = "random", model: str = "claude-sonnet-4-20250514", delay: float = 0,
-        obs_host: str = "localhost", obs_port: int = 4455, obs_password: str = "", obs_reset: bool = False, confirm: bool = False, log: str = ""):
+        thinking_budget: int = 0, obs_host: str = "localhost", obs_port: int = 4455, obs_password: str = "", obs_reset: bool = False,
+        confirm: bool = False, log: str = ""):
     if log:
         log_file = open(log, "a", encoding="utf-8")
         sys.stdout = TeeWriter(sys.__stdout__, log_file)
 
     api = STS2API(base_url)
     gs = GameState()
-    agent: Agent = RandomAgent() if agent_type == "random" else LLMAgent(model)
+    agent: Agent = RandomAgent() if agent_type == "random" else LLMAgent(model, thinking_budget=thinking_budget)
     obs = OBSOverlay(obs_host=obs_host, obs_port=obs_port, obs_password=obs_password)
     if obs_reset:
         obs.reset()
@@ -101,6 +145,58 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             # Update internal state
             gs.update(raw)
 
+            # No commands available — server returned transient state
+            if not gs.commands:
+                print(f"{C.YELLOW}WARNING: No commands available. Retrying in 3s...{C.RESET}")
+                time.sleep(3)
+                continue
+
+            # Game over: display, reflect, and track before auto-resolve
+            if gs.context == "game_over":
+                if gs.game_over and not game_over_seen:
+                    obs.on_game_over(gs.game_over.score)
+                    print(f"\n{C.RED}{C.BOLD}{'=' * 60}")
+                    print(f"{' GAME OVER ':=^60}")
+                    print(f"{'=' * 60}{C.RESET}")
+                    briefing = render(gs)
+                    print(briefing)
+
+                    # Post-run reflection
+                    print(f"\n{C.CYAN}{C.BOLD}Agent reflecting on run...{C.RESET}")
+                    try:
+                        agent.reflect(briefing)
+                        if agent.last_reasoning:
+                            for line in agent.last_reasoning.split("\n"):
+                                print(f"  {C.CYAN}{line}{C.RESET}")
+                            obs.on_reasoning(agent.last_reasoning)
+                    except Exception as e:
+                        print(f"{C.YELLOW}WARNING: Reflection failed: {e}{C.RESET}")
+
+                if game_over_seen and confirm:
+                    input("Press Enter to continue...")
+                game_over_seen = True
+            else:
+                game_over_seen = False
+
+            # Auto-resolve trivial decisions
+            auto = auto_resolve(gs)
+            if auto is not None:
+                cmd = gs.commands[auto["action"]].copy()
+                cmd_type = cmd.get("type", "?")
+                print(f"  {C.DIM}>> Auto: {cmd_type}{C.RESET}")
+                try:
+                    api.send_action(cmd)
+                except Exception as e:
+                    print(f"{C.RED}ERROR: Auto-resolve failed: {e}{C.RESET}")
+                continue
+
+            # --- Agent decision needed ---
+
+            # Reset agent on new run
+            if gs.context in ("main_menu", "character_select"):
+                agent.reset()
+                round_num = 0
+
             # Round header
             ctx_label = gs.overlay_type or gs.context
             if gs.context not in ("main_menu", "character_select"):
@@ -123,36 +219,15 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             briefing = render(gs)
             print(briefing)
 
-            # Reset conversation on new run
-            if gs.context in ("main_menu", "character_select"):
-                agent.reset()
-                round_num = 0
-
-            # Pause at game over summary (second screen) for human review
-            if gs.context == "game_over":
-                if gs.game_over and not game_over_seen:
-                    obs.on_game_over(gs.game_over.score)
-                if game_over_seen and confirm:
-                    input("Press Enter to continue...")
-                game_over_seen = True
-            else:
-                game_over_seen = False
-
-            # No commands available — server returned transient state
-            if not gs.commands:
-                print(f"{C.YELLOW}WARNING: No commands available. Retrying in 3s...{C.RESET}")
-                time.sleep(3)
-                continue
-
-            # Artificial delay before acting (state already printed above)
+            # Artificial delay before acting
             if delay > 0:
                 time.sleep(delay)
 
             # Get agent decision
             try:
                 decision = agent.decide(gs, briefing)
-            except (json.JSONDecodeError, KeyError, ValueError) as e:
-                print(f"{C.RED}ERROR: Agent returned invalid response: {e}. Retrying...{C.RESET}")
+            except Exception as e:
+                print(f"{C.RED}ERROR: Agent error: {e}. Retrying...{C.RESET}")
                 continue
 
             action_idx = decision["action"]
@@ -164,6 +239,13 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             detail_parts = [f"{k}={v}" for k, v in cmd.items() if k != "type"]
             detail = " ".join(detail_parts)
             print(f"\n  {C.GREEN}{C.BOLD}-->{C.RESET} Action: {C.GREEN}{cmd_type}{C.RESET} {C.DIM}{detail}{C.RESET}")
+
+            # Display reasoning
+            if agent.last_reasoning:
+                for line in agent.last_reasoning.split("\n"):
+                    print(f"  {C.CYAN}{line}{C.RESET}")
+                obs.on_reasoning(agent.last_reasoning)
+
             print(f"{C.DIM}{'-' * 60}{C.RESET}")
 
             # Execute
@@ -191,6 +273,7 @@ if __name__ == "__main__":
     parser.add_argument("--url", default="http://localhost:57541", help="Server base URL")
     parser.add_argument("--agent", default="random", choices=["random", "llm"], help="Agent type")
     parser.add_argument("--model", default="claude-sonnet-4-20250514", help="Claude model ID (for llm agent)")
+    parser.add_argument("--thinking-budget", type=int, default=0, help="Extended thinking token budget (0=disabled, e.g. 4000)")
     parser.add_argument("--speed", default="normal", choices=SPEED_DELAYS.keys(), help="Decision speed (fast/normal/slow)")
     parser.add_argument("--obs-host", default="localhost", help="OBS WebSocket host")
     parser.add_argument("--obs-port", type=int, default=4455, help="OBS WebSocket port")
@@ -201,5 +284,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     run(base_url=args.url, agent_type=args.agent, model=args.model, delay=SPEED_DELAYS[args.speed],
+        thinking_budget=args.thinking_budget,
         obs_host=args.obs_host, obs_port=args.obs_port, obs_password=args.obs_password, obs_reset=args.obs_reset,
         confirm=args.confirm, log=args.log)

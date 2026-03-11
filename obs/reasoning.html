@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: transparent;
+    width: 480px;
+    height: 600px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: #e0e0e0;
+  }
+  #container {
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.75);
+    border-left: 3px solid rgba(100, 200, 255, 0.6);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+  }
+  #header {
+    font-size: 14px;
+    font-weight: bold;
+    color: rgba(100, 200, 255, 0.9);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+  }
+  #reasoning {
+    font-size: 15px;
+    line-height: 1.5;
+    overflow-y: auto;
+    flex: 1;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    scrollbar-width: none;
+  }
+  #reasoning::-webkit-scrollbar { display: none; }
+  .fade-in {
+    animation: fadeIn 0.3s ease-in;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<div id="container">
+  <div id="header">Agent Reasoning</div>
+  <div id="reasoning">Waiting for agent...</div>
+</div>
+<script>
+  const el = document.getElementById('reasoning');
+
+  window.addEventListener('reasoning-update', function(event) {
+    const text = event.detail.text || '';
+    el.textContent = text;
+    el.classList.remove('fade-in');
+    void el.offsetWidth; // force reflow
+    el.classList.add('fade-in');
+    el.scrollTop = el.scrollHeight;
+  });
+</script>
+</body>
+</html>
