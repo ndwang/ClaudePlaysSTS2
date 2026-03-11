@@ -15,7 +15,79 @@ from state import GameState
 
 KB_FILE = Path(__file__).parent / "knowledge.json"
 RUN_STATE_FILE = Path(__file__).parent / "run_state.json"
+TOKEN_USAGE_FILE = Path(__file__).parent / "token_usage.json"
 ARCHIVE_DIR = Path(__file__).parent / "archive"
+
+# Pricing per 1M tokens (USD)
+MODEL_PRICING = {
+    "claude-sonnet-4": {"input": 3.0, "output": 15.0, "cache_write": 3.75, "cache_read": 0.30},
+    "claude-opus-4":   {"input": 15.0, "output": 75.0, "cache_write": 18.75, "cache_read": 1.50},
+    "claude-haiku-3":  {"input": 0.80, "output": 4.0, "cache_write": 1.0, "cache_read": 0.08},
+}
+
+
+def _get_pricing(model: str) -> dict[str, float] | None:
+    """Match a model ID to its pricing entry."""
+    for prefix in sorted(MODEL_PRICING, key=len, reverse=True):
+        if model.startswith(prefix):
+            return MODEL_PRICING[prefix]
+    return None
+
+
+def _compute_cost(usage: dict[str, int], pricing: dict[str, float]) -> float:
+    """Compute cost in USD from token counts and pricing rates."""
+    return (
+        usage.get("input_tokens", 0) * pricing["input"]
+        + usage.get("output_tokens", 0) * pricing["output"]
+        + usage.get("cache_creation_input_tokens", 0) * pricing["cache_write"]
+        + usage.get("cache_read_input_tokens", 0) * pricing["cache_read"]
+    ) / 1_000_000
+
+
+class TokenTracker:
+    """Tracks lifetime token usage and cost, persisted to disk."""
+
+    def __init__(self):
+        self.usage: dict[str, int] = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+        }
+        self.cost_usd: float = 0.0
+        self._load()
+
+    def _load(self) -> None:
+        try:
+            data = json.loads(TOKEN_USAGE_FILE.read_text(encoding="utf-8"))
+            for key in self.usage:
+                self.usage[key] = data.get(key, 0)
+            self.cost_usd = data.get("cost_usd", 0.0)
+        except (FileNotFoundError, json.JSONDecodeError, ValueError):
+            pass
+
+    def _save(self) -> None:
+        data = {**self.usage, "cost_usd": self.cost_usd}
+        TOKEN_USAGE_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    def record(self, response_usage, model: str) -> None:
+        """Accumulate usage from an API response."""
+        self.usage["input_tokens"] += getattr(response_usage, "input_tokens", 0)
+        self.usage["output_tokens"] += getattr(response_usage, "output_tokens", 0)
+        self.usage["cache_creation_input_tokens"] += getattr(response_usage, "cache_creation_input_tokens", 0) or 0
+        self.usage["cache_read_input_tokens"] += getattr(response_usage, "cache_read_input_tokens", 0) or 0
+
+        pricing = _get_pricing(model)
+        if pricing:
+            call_usage = {
+                "input_tokens": getattr(response_usage, "input_tokens", 0),
+                "output_tokens": getattr(response_usage, "output_tokens", 0),
+                "cache_creation_input_tokens": getattr(response_usage, "cache_creation_input_tokens", 0) or 0,
+                "cache_read_input_tokens": getattr(response_usage, "cache_read_input_tokens", 0) or 0,
+            }
+            self.cost_usd += _compute_cost(call_usage, pricing)
+
+        self._save()
 
 
 def _build_tools() -> list[dict]:
@@ -150,6 +222,9 @@ class LLMAgent(Agent):
         self.in_run_kb: dict[str, str] = {}
         self.cross_run_kb: dict[str, str] = _load_cross_run_kb()
 
+        # Token tracking
+        self.token_tracker = TokenTracker()
+
     def _api_call(self, stream_reasoning: bool = False, **params):
         """Call the Anthropic API with streaming, retries on transient errors.
 
@@ -170,7 +245,9 @@ class LLMAgent(Agent):
                                     self.on_reasoning_delta(event.delta.thinking)
                                 elif event.delta.type == "text_delta":
                                     self.on_reasoning_delta(event.delta.text)
-                    return stream.get_final_message()
+                    message = stream.get_final_message()
+                    self.token_tracker.record(message.usage, self.model)
+                    return message
             except (anthropic.APITimeoutError, anthropic.APIConnectionError, anthropic.InternalServerError, anthropic.RateLimitError) as e:
                 if attempt == max_attempts:
                     raise

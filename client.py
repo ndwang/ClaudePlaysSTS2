@@ -269,6 +269,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
 
             # Get agent decision
             obs.on_reasoning_clear()
+            cost_before = agent.token_tracker.cost_usd if isinstance(agent, LLMAgent) else 0
             decision = agent.decide(gs, briefing)
 
             action_idx = decision["action"]
@@ -288,6 +289,10 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             obs.on_reasoning_action(f"--> {formatted}")
 
             print(f"\n  {C.GREEN}{C.BOLD}-->{C.RESET} {formatted}")
+            if isinstance(agent, LLMAgent):
+                tt = agent.token_tracker
+                turn_cost = tt.cost_usd - cost_before
+                print(f"  {C.DIM}${turn_cost:.4f} this turn | ${tt.cost_usd:.2f} lifetime{C.RESET}")
             print(f"{C.DIM}{'-' * 60}{C.RESET}")
 
             if delay < 0:

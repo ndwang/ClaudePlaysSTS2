@@ -15,4 +15,5 @@ sts2agent.log
 obs/state.json
 knowledge.json
 run_state.json
+token_usage.json
 archive/
