@@ -68,7 +68,7 @@ class OBSOverlay:
         self.high_score = 0
         self.total_rounds = 0
         self._save()
-        self._emit("timer-control", {"action": "reset"})
+        self._emit("timer-control", {"action": "restart"})
         self._emit("round-update", {"value": 0})
         self._emit("high-score-update", {"value": 0})
 
