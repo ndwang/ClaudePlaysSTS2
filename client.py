@@ -110,6 +110,7 @@ def auto_resolve(gs: GameState) -> dict | None:
 
 def run(base_url: str = "http://localhost:57541", agent_type: str = "random", model: str = "claude-sonnet-4-20250514", delay: float = 0,
         thinking_budget: int = 0, obs_host: str = "localhost", obs_port: int = 4455, obs_password: str = "", obs_reset: bool = False,
+        run_reset: bool = False, knowledge_reset: bool = False,
         confirm: bool = False, log: str = ""):
     log_file = None
     if log:
@@ -128,15 +129,23 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             print(f"{C.CYAN}{text}{C.RESET}", end="", flush=True)
             obs.on_reasoning_delta(text)
         agent.on_reasoning_delta = _on_reasoning_delta
+
+    # Apply reset flags
     if obs_reset:
         obs.reset()
+    if isinstance(agent, LLMAgent):
+        if knowledge_reset:
+            LLMAgent.clear_cross_run_kb()
+            agent.cross_run_kb.clear()
+        if run_reset:
+            LLMAgent.clear_run_state()
 
     # Push initial KB state to overlay
     if isinstance(agent, LLMAgent):
         obs.on_kb_update(agent.in_run_kb, agent.cross_run_kb)
 
     # Attempt crash recovery for LLM agent
-    recovered = isinstance(agent, LLMAgent) and agent.load_run_state()
+    recovered = not run_reset and isinstance(agent, LLMAgent) and agent.load_run_state()
     if recovered:
         print(f"{C.YELLOW}{C.BOLD}{t('client.recovered')}{C.RESET}")
         obs.on_kb_update(agent.in_run_kb, agent.cross_run_kb)
@@ -319,14 +328,21 @@ if __name__ == "__main__":
     parser.add_argument("--obs-host", default="localhost", help="OBS WebSocket host")
     parser.add_argument("--obs-port", type=int, default=4455, help="OBS WebSocket port")
     parser.add_argument("--obs-password", default=os.environ.get("OBS_WEBSOCKET_PASSWORD", ""), help="OBS WebSocket password (or set OBS_WEBSOCKET_PASSWORD env var)")
-    parser.add_argument("--obs-reset", action="store_true", help="Reset OBS overlay (timer, rounds, high score) before starting")
+    parser.add_argument("--obs-reset", action="store_true", help="Reset OBS overlay (timer, rounds, high score)")
+    parser.add_argument("--run-reset", action="store_true", help="Clear agent run state (conversation + in-run KB)")
+    parser.add_argument("--knowledge-reset", action="store_true", help="Clear cross-run knowledge base")
+    parser.add_argument("--reset", action="store_true", help="Reset all state (OBS + run + knowledge)")
     parser.add_argument("--confirm", action="store_true", help="Pause for human confirmation at end of each run")
     parser.add_argument("--log", default="", help="Path to log file (appends clean text, no ANSI codes)")
     args = parser.parse_args()
+
+    if args.reset:
+        args.obs_reset = args.run_reset = args.knowledge_reset = True
 
     set_lang(args.lang)
 
     run(base_url=args.url, agent_type=args.agent, model=args.model, delay=SPEED_DELAYS[args.speed],
         thinking_budget=args.thinking_budget,
         obs_host=args.obs_host, obs_port=args.obs_port, obs_password=args.obs_password, obs_reset=args.obs_reset,
+        run_reset=args.run_reset, knowledge_reset=args.knowledge_reset,
         confirm=args.confirm, log=args.log)

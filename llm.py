@@ -15,6 +15,7 @@ from state import GameState
 
 KB_FILE = Path(__file__).parent / "knowledge.json"
 RUN_STATE_FILE = Path(__file__).parent / "run_state.json"
+ARCHIVE_DIR = Path(__file__).parent / "archive"
 
 
 def _build_tools() -> list[dict]:
@@ -67,6 +68,16 @@ def _build_tools() -> list[dict]:
             },
         },
     ]
+
+
+def _archive(src: Path) -> None:
+    """Move a file to the archive directory with a timestamp suffix."""
+    if not src.exists():
+        return
+    ARCHIVE_DIR.mkdir(exist_ok=True)
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    dest = ARCHIVE_DIR / f"{src.stem}_{timestamp}{src.suffix}"
+    src.rename(dest)
 
 
 def _load_cross_run_kb() -> dict[str, str]:
@@ -303,8 +314,13 @@ class LLMAgent(Agent):
 
     @staticmethod
     def clear_run_state() -> None:
-        """Remove saved run state file."""
-        RUN_STATE_FILE.unlink(missing_ok=True)
+        """Archive saved run state file."""
+        _archive(RUN_STATE_FILE)
+
+    @staticmethod
+    def clear_cross_run_kb() -> None:
+        """Archive cross-run knowledge base file."""
+        _archive(KB_FILE)
 
     def _process_kb_update(self, inp: dict) -> str:
         """Process an update_knowledge_base tool call, return result message."""
