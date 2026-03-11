@@ -138,6 +138,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
 
     game_over_seen = False
     round_num = 0
+    round_counted = False  # track to avoid double-counting on retries
     print(f"{C.CYAN}{C.BOLD}STS2 client starting. Waiting for game...{C.RESET}")
 
     try:
@@ -212,9 +213,10 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
 
             # Round header
             ctx_label = gs.overlay_type or gs.context
-            if gs.context not in ("main_menu", "character_select"):
+            if gs.context not in ("main_menu", "character_select") and not round_counted:
                 round_num += 1
                 obs.on_round()
+                round_counted = True
             color = CONTEXT_COLORS.get(ctx_label, C.WHITE)
             header = f" Round {round_num} | {ctx_label} " if round_num > 0 else f" {ctx_label} "
             separator = "=" * 60
@@ -271,6 +273,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
                 continue
 
             # Update state from action response
+            round_counted = False
             if "state" in result:
                 gs.update(result["state"])
     finally:
