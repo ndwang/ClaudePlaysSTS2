@@ -278,7 +278,8 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             if "target" in decision:
                 cmd["targetIndex"] = decision["target"]
 
-            formatted = format_command(cmd)
+            enemies = gs.combat.enemies if gs.combat else []
+            formatted = format_command(cmd, enemies=enemies)
             # Reasoning was already streamed to console and OBS
             if agent.last_reasoning:
                 print()  # newline after streamed reasoning

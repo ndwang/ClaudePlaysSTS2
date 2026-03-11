@@ -333,12 +333,24 @@ def _render_commands(gs: GameState) -> str:
     return "\n".join(lines)
 
 
-def format_command(cmd: dict) -> str:
+def _enemy_name(enemies: list | None, index: int) -> str:
+    """Look up enemy name by index, falling back to the raw index."""
+    if enemies:
+        for e in enemies:
+            if e.index == index:
+                return f"{e.name}[{index}]"
+    return f"[{index}]"
+
+
+def format_command(cmd: dict, enemies: list | None = None) -> str:
     """Format a single command into a human-readable string."""
     cmd_type = cmd.get("type", "?")
 
     if cmd_type == "play_card":
         name = cmd.get("card", "?")
+        if "targetIndex" in cmd:
+            target_name = _enemy_name(enemies, cmd["targetIndex"])
+            return t("cmd.play_card_targeted", label=name, target=target_name)
         if cmd.get("requiresTarget"):
             return t("cmd.play_card_target", label=name)
         return t("cmd.play_card", label=name)
@@ -348,6 +360,9 @@ def format_command(cmd: dict) -> str:
 
     if cmd_type == "use_potion":
         name = cmd.get("potion", "?")
+        if "targetIndex" in cmd:
+            target_name = _enemy_name(enemies, cmd["targetIndex"])
+            return t("cmd.use_potion_targeted", label=name, target=target_name)
         if cmd.get("requiresTarget"):
             return t("cmd.use_potion_target", label=name)
         return t("cmd.use_potion", label=name)
