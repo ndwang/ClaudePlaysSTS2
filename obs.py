@@ -82,9 +82,25 @@ class OBSOverlay:
         """Call when the agent is shutting down."""
         self._emit("timer-control", {"action": "pause"})
 
+    def on_reasoning_clear(self) -> None:
+        """Clear the reasoning overlay for a new decision."""
+        self._emit("reasoning-clear", {})
+
+    def on_reasoning_delta(self, text: str) -> None:
+        """Stream a reasoning text chunk to the OBS overlay."""
+        self._emit("reasoning-delta", {"text": text})
+
     def on_reasoning(self, text: str) -> None:
-        """Push agent reasoning text to the OBS overlay."""
+        """Push full agent reasoning text to the OBS overlay (fallback)."""
         self._emit("reasoning-update", {"text": text})
+
+    def on_reasoning_action(self, text: str) -> None:
+        """Show the chosen action in the reasoning overlay and close the block."""
+        self._emit("reasoning-action", {"text": text})
+
+    def on_kb_update(self, in_run_kb: dict[str, str], cross_run_kb: dict[str, str]) -> None:
+        """Push knowledge base contents to the OBS overlay."""
+        self._emit("kb-update", {"in_run": in_run_kb, "cross_run": cross_run_kb})
 
     def on_game_over(self, score: int) -> None:
         """Call when game over is reached."""

@@ -65,6 +65,7 @@ SPEED_DELAYS = {
     "fast": 0,
     "normal": 1.0,
     "slow": 3.0,
+    "step": -1,
 }
 
 
@@ -124,18 +125,26 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
     gs = GameState()
     agent: Agent = RandomAgent() if agent_type == "random" else LLMAgent(model, thinking_budget=thinking_budget)
 
+    obs = OBSOverlay(obs_host=obs_host, obs_port=obs_port, obs_password=obs_password)
+
     # Wire up real-time reasoning streaming for LLM agent
     if isinstance(agent, LLMAgent):
-        agent.on_reasoning_delta = lambda text: print(f"{C.CYAN}{text}{C.RESET}", end="", flush=True)
-
-    obs = OBSOverlay(obs_host=obs_host, obs_port=obs_port, obs_password=obs_password)
+        def _on_reasoning_delta(text):
+            print(f"{C.CYAN}{text}{C.RESET}", end="", flush=True)
+            obs.on_reasoning_delta(text)
+        agent.on_reasoning_delta = _on_reasoning_delta
     if obs_reset:
         obs.reset()
+
+    # Push initial KB state to overlay
+    if isinstance(agent, LLMAgent):
+        obs.on_kb_update(agent.in_run_kb, agent.cross_run_kb)
 
     # Attempt crash recovery for LLM agent
     recovered = isinstance(agent, LLMAgent) and agent.load_run_state()
     if recovered:
         print(f"{C.YELLOW}{C.BOLD}Recovered saved run state. Resuming...{C.RESET}")
+        obs.on_kb_update(agent.in_run_kb, agent.cross_run_kb)
 
     shutdown_requested = False
 
@@ -189,11 +198,13 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
 
                     # Post-run reflection
                     print(f"\n{C.CYAN}{C.BOLD}Agent reflecting on run...{C.RESET}")
+                    obs.on_reasoning_clear()
                     try:
                         agent.reflect(briefing)
                         if agent.last_reasoning:
                             print()  # newline after streamed reasoning
-                            obs.on_reasoning(agent.last_reasoning)
+                        if isinstance(agent, LLMAgent):
+                            obs.on_kb_update(agent.in_run_kb, agent.cross_run_kb)
                     except Exception as e:
                         print(f"{C.YELLOW}WARNING: Reflection failed: {e}{C.RESET}")
 
@@ -248,11 +259,12 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             briefing = render(gs)
             print(briefing)
 
-            # Artificial delay before acting
+            # Artificial delay or manual step before acting
             if delay > 0:
                 time.sleep(delay)
 
             # Get agent decision
+            obs.on_reasoning_clear()
             try:
                 decision = agent.decide(gs, briefing)
             except Exception as e:
@@ -267,13 +279,22 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             cmd_type = cmd.get("type", "?")
             detail_parts = [f"{k}={v}" for k, v in cmd.items() if k != "type"]
             detail = " ".join(detail_parts)
-            # Reasoning was already streamed to console; send full text to OBS
+            # Reasoning was already streamed to console and OBS
             if agent.last_reasoning:
                 print()  # newline after streamed reasoning
-                obs.on_reasoning(agent.last_reasoning)
+
+            # Push KB state to overlay
+            if isinstance(agent, LLMAgent):
+                obs.on_kb_update(agent.in_run_kb, agent.cross_run_kb)
+
+            action_text = f"--> {cmd_type} {detail}".strip()
+            obs.on_reasoning_action(action_text)
 
             print(f"\n  {C.GREEN}{C.BOLD}-->{C.RESET} Action: {C.GREEN}{cmd_type}{C.RESET} {C.DIM}{detail}{C.RESET}")
             print(f"{C.DIM}{'-' * 60}{C.RESET}")
+
+            if delay < 0:
+                input(f"  {C.DIM}Press Enter to execute...{C.RESET}")
 
             # Execute
             try:

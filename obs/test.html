@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; color: #e0e0e0; font-family: sans-serif; padding: 16px; }
+  h2 { margin: 12px 0 8px; color: #aaa; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+  .panels { display: flex; gap: 24px; margin-bottom: 16px; }
+  iframe { border: 1px solid #333; background: #000; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  button {
+    padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;
+    font-size: 13px; font-family: monospace; background: #2a2a4a; color: #e0e0e0;
+  }
+  button:hover { background: #3a3a6a; }
+  button.accent { background: #2a5a3a; }
+  button.warn { background: #5a2a2a; }
+</style>
+</head>
+<body>
+
+<h2>Overlays</h2>
+<div class="panels">
+  <div>
+    <div style="color:#666;font-size:12px;margin-bottom:4px">reasoning.html (480x600)</div>
+    <iframe id="reasoning-frame" src="reasoning.html" width="480" height="600"></iframe>
+  </div>
+  <div>
+    <div style="color:#666;font-size:12px;margin-bottom:4px">knowledge.html (480x600)</div>
+    <iframe id="knowledge-frame" src="knowledge.html" width="480" height="600"></iframe>
+  </div>
+  <div>
+    <div style="color:#666;font-size:12px;margin-bottom:4px">overlay.html (960x120)</div>
+    <iframe id="overlay-frame" src="overlay.html" width="960" height="120"></iframe>
+  </div>
+</div>
+
+<h2>Reasoning</h2>
+<div class="controls">
+  <button class="accent" onclick="streamFakeReasoning()">Stream Decision</button>
+  <button onclick="emit(reasoningFrame, 'reasoning-action', {text: '--> play_card index=2 targetIndex=0'})">Action</button>
+</div>
+
+<h2>Knowledge Base</h2>
+<div class="controls">
+  <button class="accent" onclick="kbAddInRun()">+ In-Run</button>
+  <button class="accent" onclick="kbAddCrossRun()">+ Cross-Run</button>
+  <button onclick="kbEditRandom()">Edit Random</button>
+  <button onclick="kbRemoveRandom()">Remove Random</button>
+  <button class="warn" onclick="kbClear()">Clear KB</button>
+</div>
+
+<h2>Stats Bar</h2>
+<div class="controls">
+  <button onclick="emit(overlayFrame, 'round-update', {value: Math.floor(Math.random()*200)})">Random Round</button>
+  <button onclick="emit(overlayFrame, 'high-score-update', {value: Math.floor(Math.random()*5000)})">Random Score</button>
+  <button onclick="emit(overlayFrame, 'timer-control', {action: 'start'})">Start Timer</button>
+  <button onclick="emit(overlayFrame, 'timer-control', {action: 'pause'})">Pause Timer</button>
+  <button class="warn" onclick="emit(overlayFrame, 'timer-control', {action: 'restart'})">Restart Timer</button>
+</div>
+
+<script>
+  const reasoningFrame = document.getElementById('reasoning-frame');
+  const knowledgeFrame = document.getElementById('knowledge-frame');
+  const overlayFrame = document.getElementById('overlay-frame');
+
+  function emit(iframe, name, detail) {
+    iframe.contentWindow.postMessage({ _event: name, detail: detail }, '*');
+  }
+
+  // Stream fake reasoning word by word, then show action
+  let streamTimer = null;
+  let demoIdx = 0;
+  const demos = [
+    { text: `Looking at the current combat state. I have 3 energy, 5 cards in hand.\n\nEnemy: Jaw Worm (42/42 HP) intends to attack for 11 damage.\n\nMy hand: Strike (1), Strike (1), Defend (1), Bash (2), Defend (1).\n\nI should open with Bash to apply Vulnerable, then follow up with Strikes for bonus damage. Bash costs 2 energy, leaving 1 for a Defend to mitigate some of the incoming 11 damage.`,
+      action: '--> play_card index=3 targetIndex=0' },
+    { text: `Jaw Worm took 8 damage from Bash and is now Vulnerable. I have 1 energy left and Defend (1) in hand.\n\nWith 1 energy I can play Defend for 5 block. The enemy intends to attack for 11, so I'll take 6 damage. That's acceptable — the Vulnerable debuff will pay off next turn.`,
+      action: '--> play_card index=2' },
+    { text: `New turn. Drew: Strike, Strike, Pommel Strike, Defend, Flex.\n\nJaw Worm is Vulnerable (1 turn left). I have 3 energy. Flex gives +4 Strength this turn — with Vulnerable that's huge. Flex (0) + Pommel Strike (1) + Strike (1) + Strike (1) = 3 energy exactly.\n\nThat's (6+4)*1.5 + (6+4)*1.5 + (9+4)*1.5 = 15+15+19 = 49 damage. Jaw Worm has 34 HP — that's lethal!`,
+      action: '--> play_card index=4' },
+  ];
+  function streamFakeReasoning() {
+    if (streamTimer) { clearInterval(streamTimer); streamTimer = null; }
+    const demo = demos[demoIdx % demos.length];
+    demoIdx++;
+    emit(reasoningFrame, 'reasoning-clear', {});
+    const words = demo.text.split(/(?<=\s)/);
+    let i = 0;
+    streamTimer = setInterval(() => {
+      if (i >= words.length) {
+        clearInterval(streamTimer);
+        streamTimer = null;
+        emit(reasoningFrame, 'reasoning-action', { text: demo.action });
+        return;
+      }
+      emit(reasoningFrame, 'reasoning-delta', { text: words[i] });
+      i++;
+    }, 50);
+  }
+
+  // KB state tracked locally so each button adds incrementally
+  let kbInRun = {};
+  let kbCrossRun = {};
+  let inRunIdx = 0;
+  let crossRunIdx = 0;
+
+  const inRunSamples = [
+    ['deck_strategy', 'Building strength-based attack deck with Inflame + Heavy Blade'],
+    ['current_goal', 'Find more block cards before Act 2 boss'],
+    ['elite_plan', 'Avoid elites until HP > 50'],
+    ['boss_prep', 'Save Fire Potion for boss phase 2'],
+    ['pathing', 'Take right path through Act 2 for campfire before boss'],
+  ];
+
+  const crossRunSamples = [
+    ['neow_event', 'Random relic is usually best at full HP'],
+    ['act1_boss', 'Hexaghost requires consistent damage output, not burst'],
+    ['energy_relics', 'Always take energy relics when offered'],
+    ['strength_builds', 'Need block by Act 2 or you die to multi-attacks'],
+    ['shop_priority', 'Card removal > relics > potions'],
+  ];
+
+  function kbAddInRun() {
+    const [k, v] = inRunSamples[inRunIdx % inRunSamples.length];
+    kbInRun[k] = v;
+    inRunIdx++;
+    emit(knowledgeFrame, 'kb-update', { in_run: kbInRun, cross_run: kbCrossRun });
+  }
+
+  function kbAddCrossRun() {
+    const [k, v] = crossRunSamples[crossRunIdx % crossRunSamples.length];
+    kbCrossRun[k] = v;
+    crossRunIdx++;
+    emit(knowledgeFrame, 'kb-update', { in_run: kbInRun, cross_run: kbCrossRun });
+  }
+
+  const editVariants = [
+    'Updated strategy: pivot to defensive build',
+    'Revised: this is no longer accurate after patch',
+    'Changed priority after losing to Time Eater',
+    'Now focusing on scaling over frontloaded damage',
+  ];
+  let editIdx = 0;
+
+  function kbEditRandom() {
+    // Pick a random existing key from either KB and change its value
+    const allKeys = [
+      ...Object.keys(kbInRun).map(k => ['in_run', k]),
+      ...Object.keys(kbCrossRun).map(k => ['cross_run', k]),
+    ];
+    if (allKeys.length === 0) return;
+    const [store, key] = allKeys[Math.floor(Math.random() * allKeys.length)];
+    const newVal = editVariants[editIdx % editVariants.length];
+    editIdx++;
+    if (store === 'in_run') kbInRun[key] = newVal;
+    else kbCrossRun[key] = newVal;
+    emit(knowledgeFrame, 'kb-update', { in_run: kbInRun, cross_run: kbCrossRun });
+  }
+
+  function kbRemoveRandom() {
+    // Remove a random existing key from either KB
+    const allKeys = [
+      ...Object.keys(kbInRun).map(k => ['in_run', k]),
+      ...Object.keys(kbCrossRun).map(k => ['cross_run', k]),
+    ];
+    if (allKeys.length === 0) return;
+    const [store, key] = allKeys[Math.floor(Math.random() * allKeys.length)];
+    if (store === 'in_run') delete kbInRun[key];
+    else delete kbCrossRun[key];
+    emit(knowledgeFrame, 'kb-update', { in_run: kbInRun, cross_run: kbCrossRun });
+  }
+
+  function kbClear() {
+    kbInRun = {};
+    kbCrossRun = {};
+    inRunIdx = 0;
+    crossRunIdx = 0;
+    emit(knowledgeFrame, 'kb-update', { in_run: {}, cross_run: {} });
+  }
+</script>
+</body>
+</html>

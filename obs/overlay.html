@@ -114,6 +114,13 @@
   window.addEventListener('high-score-update', function(event) {
     hsEl.textContent = event.detail.value;
   });
+
+  // Bridge: accept postMessage and re-dispatch as CustomEvent (for iframe testing)
+  window.addEventListener('message', function(msg) {
+    if (msg.data && msg.data._event) {
+      window.dispatchEvent(new CustomEvent(msg.data._event, { detail: msg.data.detail || {} }));
+    }
+  });
 </script>
 </body>
 </html>

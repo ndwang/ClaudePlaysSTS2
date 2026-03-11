@@ -29,40 +29,110 @@
     margin-bottom: 12px;
     flex-shrink: 0;
   }
-  #reasoning {
-    font-size: 15px;
-    line-height: 1.5;
+  #log {
     overflow-y: auto;
     flex: 1;
-    white-space: pre-wrap;
-    word-wrap: break-word;
     scrollbar-width: none;
   }
-  #reasoning::-webkit-scrollbar { display: none; }
-  .fade-in {
-    animation: fadeIn 0.3s ease-in;
+  #log::-webkit-scrollbar { display: none; }
+  .block {
+    font-size: 15px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    margin-bottom: 16px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 4px;
+    overflow: hidden;
+    transition: opacity 0.5s ease, max-height 0.5s ease, margin-bottom 0.5s ease;
   }
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+  .block .action {
+    display: block;
+    margin: 8px -10px -10px -10px;
+    padding: 6px 10px;
+    background: rgba(255, 160, 30, 0.15);
+    border-top: 1px solid rgba(255, 160, 30, 0.3);
+    color: rgba(255, 180, 50, 1);
+    font-size: 14px;
   }
 </style>
 </head>
 <body>
 <div id="container">
   <div id="header">Agent Reasoning</div>
-  <div id="reasoning">Waiting for agent...</div>
+  <div id="log"></div>
 </div>
 <script>
-  const el = document.getElementById('reasoning');
+  const log = document.getElementById('log');
+  const MAX_BLOCKS = 20;
+  let currentBlock = null;
+  let currentText = null;
 
+  function pruneOldBlocks() {
+    while (log.children.length > MAX_BLOCKS) {
+      const old = log.firstElementChild;
+      old.style.opacity = '0';
+      old.style.maxHeight = '0';
+      old.style.marginBottom = '0';
+      old.style.paddingBottom = '0';
+      old.addEventListener('transitionend', () => old.remove(), { once: true });
+    }
+  }
+
+  function ensureBlock() {
+    if (!currentBlock) {
+      currentBlock = document.createElement('div');
+      currentBlock.className = 'block';
+      currentText = document.createElement('span');
+      currentBlock.appendChild(currentText);
+      log.appendChild(currentBlock);
+      pruneOldBlocks();
+    }
+  }
+
+  // New decision — start a new block (don't erase history)
+  window.addEventListener('reasoning-clear', function() {
+    currentBlock = null;
+    currentText = null;
+  });
+
+  // Streaming: append delta text to current block
+  window.addEventListener('reasoning-delta', function(event) {
+    const text = event.detail.text || '';
+    ensureBlock();
+    currentText.textContent += text;
+    log.scrollTop = log.scrollHeight;
+  });
+
+  // Bulk update — append as a complete block
   window.addEventListener('reasoning-update', function(event) {
     const text = event.detail.text || '';
-    el.textContent = text;
-    el.classList.remove('fade-in');
-    void el.offsetWidth; // force reflow
-    el.classList.add('fade-in');
-    el.scrollTop = el.scrollHeight;
+    currentBlock = null;
+    currentText = null;
+    ensureBlock();
+    currentText.textContent = text;
+    log.scrollTop = log.scrollHeight;
+  });
+
+  // Action taken — append action line to current block, then close it
+  window.addEventListener('reasoning-action', function(event) {
+    const text = event.detail.text || '';
+    ensureBlock();
+    const actionEl = document.createElement('span');
+    actionEl.className = 'action';
+    actionEl.textContent = text;
+    currentBlock.appendChild(actionEl);
+    log.scrollTop = log.scrollHeight;
+    currentBlock = null;
+    currentText = null;
+  });
+
+  // Bridge: accept postMessage and re-dispatch as CustomEvent (for iframe testing)
+  window.addEventListener('message', function(msg) {
+    if (msg.data && msg.data._event) {
+      window.dispatchEvent(new CustomEvent(msg.data._event, { detail: msg.data.detail || {} }));
+    }
   });
 </script>
 </body>
