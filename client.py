@@ -260,11 +260,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
 
             # Get agent decision
             obs.on_reasoning_clear()
-            try:
-                decision = agent.decide(gs, briefing)
-            except Exception as e:
-                print(f"{C.RED}{t('client.agent_error', error=e)}{C.RESET}")
-                continue
+            decision = agent.decide(gs, briefing)
 
             action_idx = decision["action"]
             cmd = gs.commands[action_idx].copy()

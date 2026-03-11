@@ -402,11 +402,6 @@ class LLMAgent(Agent):
         return None
 
     def decide(self, gs: GameState, briefing: str) -> dict:
-        # Guard: if previous decide() failed mid-way, messages may end with a
-        # user message.  Pop it so we don't create consecutive user messages.
-        if self.messages and self.messages[-1].get("role") == "user":
-            self.messages.pop()
-
         # Summarize if history is getting long
         if len(self.messages) >= self.SUMMARIZE_THRESHOLD:
             self._summarize()
@@ -416,6 +411,11 @@ class LLMAgent(Agent):
         if self._summary:
             briefing = t("prompt.history_summary", summary=self._summary) + briefing
             self._summary = ""
+
+        # Save state so we can roll back if decide() fails partway through
+        saved_msg_len = len(self.messages)
+        saved_pending_id = self._pending_tool_use_id
+        saved_pending_kb = list(self._pending_kb_results)
 
         if self._pending_tool_use_id is None:
             self.messages.append({"role": "user", "content": briefing})
@@ -432,14 +432,21 @@ class LLMAgent(Agent):
 
         num_commands = len(gs.commands)
 
-        for _ in range(self.MAX_RETRIES):
-            response = self._api_call(stream_reasoning=True, **self._build_api_params())
-            result = self._process_response(response, num_commands)
-            if result is not None:
-                self.save_run_state()
-                return result
+        try:
+            for _ in range(self.MAX_RETRIES):
+                response = self._api_call(stream_reasoning=True, **self._build_api_params())
+                result = self._process_response(response, num_commands)
+                if result is not None:
+                    self.save_run_state()
+                    return result
 
-        raise RuntimeError(f"Agent failed to provide valid action after {self.MAX_RETRIES} retries")
+            raise RuntimeError(f"Agent failed to provide valid action after {self.MAX_RETRIES} retries")
+        except Exception:
+            # Roll back to pre-decide state so the next call starts clean
+            del self.messages[saved_msg_len:]
+            self._pending_tool_use_id = saved_pending_id
+            self._pending_kb_results = saved_pending_kb
+            raise
 
     def reflect(self, briefing: str) -> None:
         """Post-run reflection: agent reviews the run and updates cross-run KB."""
