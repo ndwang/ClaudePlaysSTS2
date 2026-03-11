@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: transparent;
+    overflow: hidden;
+    width: 1440px;
+    height: 100px;
+    font-family: 'Consolas', monospace;
+    color: #e0e0e0;
+  }
+  #container {
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 20px;
+  }
+  #label {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: rgba(200, 160, 60, 0.7);
+    margin-bottom: 6px;
+  }
+  #ticker-wrap {
+    overflow: hidden;
+    width: 100%;
+  }
+  #ticker {
+    display: inline-block;
+    white-space: nowrap;
+    font-size: 20px;
+    line-height: 1.4;
+    will-change: transform;
+  }
+  #ticker .item {
+    display: inline;
+  }
+  #ticker .key {
+    color: #fff;
+    font-weight: bold;
+  }
+  #ticker .value {
+    color: #bbb;
+  }
+  #ticker .sep {
+    color: rgba(200, 160, 60, 0.5);
+    margin: 0 24px;
+  }
+  .empty-msg {
+    color: #666;
+    font-style: italic;
+    font-size: 16px;
+  }
+</style>
+</head>
+<body>
+<div id="container">
+  <div id="label">Learned Knowledge</div>
+  <div id="ticker-wrap">
+    <div id="ticker"><span class="empty-msg">No entries yet</span></div>
+  </div>
+</div>
+<script>
+  const ticker = document.getElementById('ticker');
+  const tickerWrap = document.getElementById('ticker-wrap');
+  let animId = null;
+  let offset = 0;
+  let speed = 1; // px per frame
+  let contentWidth = 0;
+  let entries = {};
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function buildTicker() {
+    const keys = Object.keys(entries);
+    if (keys.length === 0) {
+      ticker.innerHTML = '<span class="empty-msg">No entries yet</span>';
+      ticker.style.transform = '';
+      offset = 0;
+      if (animId) { cancelAnimationFrame(animId); animId = null; }
+      return;
+    }
+
+    // Build content twice for seamless loop
+    let html = '';
+    for (let copy = 0; copy < 2; copy++) {
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        html += '<span class="item"><span class="key">' + escapeHtml(k) +
+          ':</span> <span class="value">' + escapeHtml(entries[k]) + '</span></span>';
+        html += '<span class="sep">\u2022</span>';
+      }
+    }
+    ticker.innerHTML = html;
+
+    // Measure single copy width (half of total)
+    requestAnimationFrame(() => {
+      contentWidth = ticker.scrollWidth / 2;
+      offset = 0;
+      if (!animId) animate();
+    });
+  }
+
+  function animate() {
+    offset += speed;
+    if (contentWidth > 0 && offset >= contentWidth) {
+      offset -= contentWidth;
+    }
+    ticker.style.transform = 'translateX(-' + offset + 'px)';
+    animId = requestAnimationFrame(animate);
+  }
+
+  window.addEventListener('kb-update', function(event) {
+    const data = event.detail;
+    const newEntries = data.cross_run || {};
+    // Only rebuild if changed
+    if (JSON.stringify(newEntries) !== JSON.stringify(entries)) {
+      entries = newEntries;
+      buildTicker();
+    }
+  });
+
+  // Restore from state.json on load
+  fetch('state.json').then(r => r.json()).then(state => {
+    const kb = state.kb;
+    if (kb && kb.cross_run && Object.keys(kb.cross_run).length > 0) {
+      entries = kb.cross_run;
+      buildTicker();
+    }
+  }).catch(() => {});
+
+  // Bridge: accept postMessage and re-dispatch as CustomEvent (for iframe testing)
+  window.addEventListener('message', function(msg) {
+    if (msg.data && msg.data._event) {
+      window.dispatchEvent(new CustomEvent(msg.data._event, { detail: msg.data.detail || {} }));
+    }
+  });
+</script>
+</body>
+</html>

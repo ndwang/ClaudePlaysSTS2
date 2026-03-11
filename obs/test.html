@@ -28,8 +28,8 @@
   </div>
   <!-- Stats bar below game -->
   <iframe id="overlay-frame" src="overlay.html" width="1440" height="80" style="position:absolute;left:0;top:900;border:none"></iframe>
-  <!-- Bottom-right fill -->
-  <div style="position:absolute;left:0;top:980;width:1440px;height:100px;background:rgba(0,0,0,0.8)"></div>
+  <!-- Cross-run marquee -->
+  <iframe id="marquee-frame" src="marquee.html" width="1440" height="100" style="position:absolute;left:0;top:980;border:none"></iframe>
   <!-- Right sidebar -->
   <iframe id="knowledge-frame" src="knowledge.html" width="480" height="380" style="position:absolute;left:1440;top:0;border:none"></iframe>
   <iframe id="reasoning-frame" src="reasoning.html" width="480" height="700" style="position:absolute;left:1440;top:380;border:none"></iframe>
@@ -63,6 +63,7 @@
   const reasoningFrame = document.getElementById('reasoning-frame');
   const knowledgeFrame = document.getElementById('knowledge-frame');
   const overlayFrame = document.getElementById('overlay-frame');
+  const marqueeFrame = document.getElementById('marquee-frame');
 
   function emit(iframe, name, detail) {
     iframe.contentWindow.postMessage({ _event: name, detail: detail }, '*');
@@ -120,18 +121,24 @@
     ['shop_priority', 'Card removal > relics > potions'],
   ];
 
+  function emitKB() {
+    const data = { in_run: kbInRun, cross_run: kbCrossRun };
+    emit(knowledgeFrame, 'kb-update', data);
+    emit(marqueeFrame, 'kb-update', data);
+  }
+
   function kbAddInRun() {
     const [k, v] = inRunSamples[inRunIdx % inRunSamples.length];
     kbInRun[k] = v;
     inRunIdx++;
-    emit(knowledgeFrame, 'kb-update', { in_run: kbInRun, cross_run: kbCrossRun });
+    emitKB();
   }
 
   function kbAddCrossRun() {
     const [k, v] = crossRunSamples[crossRunIdx % crossRunSamples.length];
     kbCrossRun[k] = v;
     crossRunIdx++;
-    emit(knowledgeFrame, 'kb-update', { in_run: kbInRun, cross_run: kbCrossRun });
+    emitKB();
   }
 
   const editVariants = [
@@ -143,7 +150,6 @@
   let editIdx = 0;
 
   function kbEditRandom() {
-    // Pick a random existing key from either KB and change its value
     const allKeys = [
       ...Object.keys(kbInRun).map(k => ['in_run', k]),
       ...Object.keys(kbCrossRun).map(k => ['cross_run', k]),
@@ -154,11 +160,10 @@
     editIdx++;
     if (store === 'in_run') kbInRun[key] = newVal;
     else kbCrossRun[key] = newVal;
-    emit(knowledgeFrame, 'kb-update', { in_run: kbInRun, cross_run: kbCrossRun });
+    emitKB();
   }
 
   function kbRemoveRandom() {
-    // Remove a random existing key from either KB
     const allKeys = [
       ...Object.keys(kbInRun).map(k => ['in_run', k]),
       ...Object.keys(kbCrossRun).map(k => ['cross_run', k]),
@@ -167,7 +172,7 @@
     const [store, key] = allKeys[Math.floor(Math.random() * allKeys.length)];
     if (store === 'in_run') delete kbInRun[key];
     else delete kbCrossRun[key];
-    emit(knowledgeFrame, 'kb-update', { in_run: kbInRun, cross_run: kbCrossRun });
+    emitKB();
   }
 
   function kbClear() {
@@ -175,7 +180,7 @@
     kbCrossRun = {};
     inRunIdx = 0;
     crossRunIdx = 0;
-    emit(knowledgeFrame, 'kb-update', { in_run: {}, cross_run: {} });
+    emitKB();
   }
 </script>
 </body>

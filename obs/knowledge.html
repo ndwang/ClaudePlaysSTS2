@@ -39,9 +39,6 @@
   .section-header.in-run {
     color: rgba(100, 200, 255, 0.9);
   }
-  .section-header.cross-run {
-    color: rgba(200, 160, 60, 0.9);
-  }
   .entry {
     margin-bottom: 8px;
     font-size: 18px;
@@ -88,14 +85,9 @@
     <div class="section-header in-run">Current Run Notes</div>
     <div id="in-run-entries"><span class="empty">No notes yet</span></div>
   </div>
-  <div class="section" id="cross-run-section">
-    <div class="section-header cross-run">Learned Knowledge</div>
-    <div id="cross-run-entries"><span class="empty">No entries yet</span></div>
-  </div>
 </div>
 <script>
   const inRunEl = document.getElementById('in-run-entries');
-  const crossRunEl = document.getElementById('cross-run-entries');
 
   const TYPE_MS = 25;       // ms per character typing
   const ERASE_MS = 10;      // ms per character erasing
@@ -242,7 +234,6 @@
   window.addEventListener('kb-update', function(event) {
     const data = event.detail;
     diffEntries(inRunEl, data.in_run || {});
-    diffEntries(crossRunEl, data.cross_run || {});
   });
 
   // Instant render (no animation) for restoring state on load
@@ -271,7 +262,6 @@
     const kb = state.kb;
     if (kb) {
       renderInstant(inRunEl, kb.in_run || {});
-      renderInstant(crossRunEl, kb.cross_run || {});
     }
   }).catch(() => {});
 
