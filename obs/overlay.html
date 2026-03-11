@@ -53,6 +53,10 @@
     <div class="label" data-i18n="high_score">High Score</div>
     <div class="value" id="high-score">0</div>
   </div>
+  <div class="stat">
+    <div class="label" data-i18n="cost">Cost</div>
+    <div class="value" id="cost">$0.00</div>
+  </div>
 </div>
 <script>
   // --- Timer (elapsed + epoch, survives refresh) ---
@@ -103,6 +107,12 @@
     hsEl.textContent = event.detail.value;
   });
 
+  // --- Cost ---
+  const costEl = document.getElementById('cost');
+  window.addEventListener('cost-update', function(event) {
+    costEl.textContent = '$' + Number(event.detail.value).toFixed(2);
+  });
+
   // Restore from state.json on load
   fetch('state.json').then(r => r.json()).then(state => {
     if (state.total_rounds !== undefined) roundEl.textContent = state.total_rounds;
@@ -111,6 +121,11 @@
       // Show accumulated time, but don't tick (agent may not be running)
       timerSync(state.timer_elapsed, 0);
     }
+  }).catch(() => {});
+
+  // Restore cost from token_usage.json
+  fetch('../token_usage.json').then(r => r.json()).then(data => {
+    if (data.cost_usd !== undefined) costEl.textContent = '$' + Number(data.cost_usd).toFixed(2);
   }).catch(() => {});
 
   // Load locale strings

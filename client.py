@@ -140,9 +140,10 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
         if run_reset:
             LLMAgent.clear_run_state()
 
-    # Push initial KB state to overlay
+    # Push initial state to overlay
     if isinstance(agent, LLMAgent):
         obs.on_kb_update(agent.in_run_kb, agent.cross_run_kb)
+        obs.on_cost_update(agent.token_tracker.cost_usd)
 
     # Attempt crash recovery for LLM agent
     recovered = not run_reset and isinstance(agent, LLMAgent) and agent.load_run_state()
@@ -293,6 +294,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
                 tt = agent.token_tracker
                 turn_cost = tt.cost_usd - cost_before
                 print(f"  {C.DIM}${turn_cost:.4f} this turn | ${tt.cost_usd:.2f} lifetime{C.RESET}")
+                obs.on_cost_update(tt.cost_usd)
             print(f"{C.DIM}{'-' * 60}{C.RESET}")
 
             if delay < 0:

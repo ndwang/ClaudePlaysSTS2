@@ -130,6 +130,10 @@ class OBSOverlay:
         self._save()
         self._emit("kb-update", self._last_kb)
 
+    def on_cost_update(self, cost_usd: float) -> None:
+        """Push lifetime cost to the OBS overlay."""
+        self._emit("cost-update", {"value": cost_usd})
+
     def on_game_over(self, score: int) -> None:
         """Call when game over is reached."""
         if score > self.high_score:
