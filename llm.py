@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 import json
+import logging
 import random
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -132,6 +134,21 @@ class LLMAgent(Agent):
         self.in_run_kb: dict[str, str] = {}
         self.cross_run_kb: dict[str, str] = _load_cross_run_kb()
 
+    def _api_call(self, **params):
+        """Call the Anthropic API with timeout handling and retries on transient errors."""
+        import anthropic
+        log = logging.getLogger(__name__)
+        max_attempts = 3
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return self.client.messages.create(timeout=120, **params)
+            except (anthropic.APITimeoutError, anthropic.APIConnectionError, anthropic.InternalServerError, anthropic.RateLimitError) as e:
+                if attempt == max_attempts:
+                    raise
+                wait = 2 ** attempt
+                log.warning("API call failed (attempt %d/%d): %s. Retrying in %ds...", attempt, max_attempts, e, wait)
+                time.sleep(wait)
+
     def _build_system_prompt(self) -> str:
         from prompts import SYSTEM_PROMPT
         parts = [SYSTEM_PROMPT]
@@ -217,14 +234,25 @@ class LLMAgent(Agent):
             content += f"[Previous Summary]\n{self._summary}\n\n"
         content += f"[Recent History]\n{history_text}"
 
-        response = self.client.messages.create(
-            model=self.model,
-            system=SUMMARIZATION_PROMPT,
-            messages=[{"role": "user", "content": content}],
-            max_tokens=1024,
-        )
+        params = {
+            "model": self.model,
+            "system": SUMMARIZATION_PROMPT,
+            "messages": [{"role": "user", "content": content}],
+            "max_tokens": 1024,
+        }
+        if self.thinking_budget > 0:
+            params["max_tokens"] = self.thinking_budget + 1024
+            params["thinking"] = {
+                "type": "enabled",
+                "budget_tokens": self.thinking_budget,
+            }
 
-        self._summary = response.content[0].text
+        response = self._api_call(**params)
+
+        # Extract text (skip thinking blocks)
+        self._summary = next(
+            b.text for b in response.content if b.type == "text"
+        )
         self.messages.clear()
         self._pending_tool_use_id = None
         self._pending_kb_results = []
@@ -394,7 +422,7 @@ class LLMAgent(Agent):
         num_commands = len(gs.commands)
 
         for _ in range(self.MAX_RETRIES):
-            response = self.client.messages.create(**self._build_api_params())
+            response = self._api_call(**self._build_api_params())
             result = self._process_response(response, num_commands)
             if result is not None:
                 self.save_run_state()
@@ -436,7 +464,7 @@ class LLMAgent(Agent):
             }
 
         for _ in range(3):
-            response = self.client.messages.create(**params)
+            response = self._api_call(**params)
             content = response.content
             self.messages.append({"role": "assistant", "content": content})
             self.last_reasoning = self._extract_reasoning(content)

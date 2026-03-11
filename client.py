@@ -114,6 +114,7 @@ def auto_resolve(gs: GameState) -> dict | None:
 def run(base_url: str = "http://localhost:57541", agent_type: str = "random", model: str = "claude-sonnet-4-20250514", delay: float = 0,
         thinking_budget: int = 0, obs_host: str = "localhost", obs_port: int = 4455, obs_password: str = "", obs_reset: bool = False,
         confirm: bool = False, log: str = ""):
+    log_file = None
     if log:
         log_file = open(log, "a", encoding="utf-8")
         sys.stdout = TeeWriter(sys.__stdout__, log_file)
@@ -126,7 +127,8 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
         obs.reset()
 
     # Attempt crash recovery for LLM agent
-    if isinstance(agent, LLMAgent) and agent.load_run_state():
+    recovered = isinstance(agent, LLMAgent) and agent.load_run_state()
+    if recovered:
         print(f"{C.YELLOW}{C.BOLD}Recovered saved run state. Resuming...{C.RESET}")
 
     game_over_seen = False
@@ -196,10 +198,13 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
 
             # --- Agent decision needed ---
 
-            # Reset agent on new run
+            # Reset agent on new run (skip if resuming from crash recovery)
             if gs.context in ("main_menu", "character_select"):
-                agent.reset()
-                round_num = 0
+                if recovered:
+                    recovered = False
+                else:
+                    agent.reset()
+                    round_num = 0
 
             # Round header
             ctx_label = gs.overlay_type or gs.context
@@ -268,6 +273,9 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
                 gs.update(result["state"])
     finally:
         obs.on_exit()
+        if log_file:
+            sys.stdout = sys.__stdout__
+            log_file.close()
 
 
 if __name__ == "__main__":
