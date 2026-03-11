@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -34,6 +35,8 @@ class OBSOverlay:
         state = _load_state()
         self.high_score: int = int(state.get("high_score", 0))
         self.total_rounds: int = int(state.get("total_rounds", 0))
+        self.timer_elapsed: float = state.get("timer_elapsed", 0)  # seconds accumulated before this session
+        self.timer_start: float = time.time()  # epoch when this session started
         self._last_kb: dict = state.get("kb", {"in_run": {}, "cross_run": {}})
         self._reasoning_blocks: list[dict] = state.get("reasoning_blocks", [])
         self._current_reasoning: str = ""
@@ -48,7 +51,7 @@ class OBSOverlay:
 
         self._emit("high-score-update", {"value": self.high_score})
         self._emit("round-update", {"value": self.total_rounds})
-        self._emit("timer-control", {"action": "start"})
+        self._emit("timer-sync", {"elapsed": self.timer_elapsed, "epoch": self.timer_start})
 
     def _emit(self, event_name: str, event_data: dict) -> None:
         """Send a custom event to all OBS browser sources."""
@@ -70,16 +73,20 @@ class OBSOverlay:
         _save_state({
             "high_score": self.high_score,
             "total_rounds": self.total_rounds,
+            "timer_elapsed": self.timer_elapsed + (time.time() - self.timer_start),
             "kb": self._last_kb,
             "reasoning_blocks": self._reasoning_blocks,
         })
+        self._emit("timer-sync", {"elapsed": self.timer_elapsed, "epoch": self.timer_start})
 
     def reset(self) -> None:
         """Reset all overlay values."""
         self.high_score = 0
         self.total_rounds = 0
+        self.timer_elapsed = 0
+        self.timer_start = time.time()
         self._save()
-        self._emit("timer-control", {"action": "restart"})
+        self._emit("timer-sync", {"elapsed": 0, "epoch": self.timer_start})
         self._emit("round-update", {"value": 0})
         self._emit("high-score-update", {"value": 0})
 
@@ -91,7 +98,7 @@ class OBSOverlay:
 
     def on_exit(self) -> None:
         """Call when the agent is shutting down."""
-        self._emit("timer-control", {"action": "pause"})
+        pass
 
     def on_reasoning_clear(self) -> None:
         """Clear the reasoning overlay for a new decision."""

@@ -55,10 +55,9 @@
   </div>
 </div>
 <script>
-  // --- Timer ---
-  let startTime = null;
-  let elapsed = 0;
-  let running = false;
+  // --- Timer (elapsed + epoch, survives refresh) ---
+  let timerElapsed = 0;  // seconds accumulated from previous sessions
+  let timerEpoch = 0;    // Unix timestamp (seconds) when current session started
   let rafId = null;
   const timeEl = document.getElementById('time');
 
@@ -71,38 +70,25 @@
   }
 
   function tick() {
-    if (!running) return;
-    timeEl.textContent = fmt(elapsed + (performance.now() - startTime));
+    if (!timerEpoch) return;
+    const sessionSec = Date.now() / 1000 - timerEpoch;
+    timeEl.textContent = fmt((timerElapsed + sessionSec) * 1000);
     rafId = requestAnimationFrame(tick);
   }
 
-  function timerStart() {
-    if (running) return;
-    running = true;
-    startTime = performance.now();
-    rafId = requestAnimationFrame(tick);
-  }
-
-  function timerPause() {
-    if (!running) return;
-    elapsed += performance.now() - startTime;
-    running = false;
+  function timerSync(elapsed, epoch) {
+    timerElapsed = elapsed || 0;
+    timerEpoch = epoch || 0;
     if (rafId) cancelAnimationFrame(rafId);
+    if (timerEpoch) {
+      rafId = requestAnimationFrame(tick);
+    } else {
+      timeEl.textContent = fmt(timerElapsed * 1000);
+    }
   }
 
-  function timerReset() {
-    timerPause();
-    elapsed = 0;
-    startTime = null;
-    timeEl.textContent = '0:00:00';
-  }
-
-  window.addEventListener('timer-control', function(event) {
-    const action = event.detail.action;
-    if (action === 'start') timerStart();
-    else if (action === 'pause') timerPause();
-    else if (action === 'reset') timerReset();
-    else if (action === 'restart') { timerReset(); timerStart(); }
+  window.addEventListener('timer-sync', function(event) {
+    timerSync(event.detail.elapsed, event.detail.epoch);
   });
 
   // --- Round ---
@@ -121,6 +107,10 @@
   fetch('state.json').then(r => r.json()).then(state => {
     if (state.total_rounds !== undefined) roundEl.textContent = state.total_rounds;
     if (state.high_score !== undefined) hsEl.textContent = state.high_score;
+    if (state.timer_elapsed !== undefined) {
+      // Show accumulated time, but don't tick (agent may not be running)
+      timerSync(state.timer_elapsed, 0);
+    }
   }).catch(() => {});
 
   // Load locale strings
