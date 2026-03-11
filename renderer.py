@@ -329,12 +329,86 @@ def _render_deck(p: PlayerState) -> str:
 def _render_commands(gs: GameState) -> str:
     lines = [t("commands.header")]
     for i, cmd in enumerate(gs.commands):
-        cmd_type = cmd.get("type", "?")
-        detail_parts = []
-        for k, v in cmd.items():
-            if k == "type":
-                continue
-            detail_parts.append(f"{k}={v}")
-        detail = " " + " ".join(detail_parts) if detail_parts else ""
-        lines.append(f"  [{i}] {cmd_type}{detail}")
+        lines.append(f"  [{i}] {format_command(cmd)}")
     return "\n".join(lines)
+
+
+def format_command(cmd: dict) -> str:
+    """Format a single command into a human-readable string."""
+    cmd_type = cmd.get("type", "?")
+
+    if cmd_type == "play_card":
+        name = cmd.get("card", "?")
+        if cmd.get("requiresTarget"):
+            return t("cmd.play_card_target", label=name)
+        return t("cmd.play_card", label=name)
+
+    if cmd_type == "end_turn":
+        return t("cmd.end_turn")
+
+    if cmd_type == "use_potion":
+        name = cmd.get("potion", "?")
+        if cmd.get("requiresTarget"):
+            return t("cmd.use_potion_target", label=name)
+        return t("cmd.use_potion", label=name)
+
+    if cmd_type == "select_map_node":
+        coord = cmd.get("coord", {})
+        node_type = cmd.get("nodeType", "?")
+        return t("cmd.select_map_node", type=node_type, row=coord.get("row", "?"), col=coord.get("col", "?"))
+
+    if cmd_type == "select_event_option":
+        return t("cmd.select_event_option", label=cmd.get("label", "?"))
+
+    if cmd_type == "proceed":
+        return t("cmd.proceed")
+
+    if cmd_type == "continue":
+        return t("cmd.continue")
+
+    if cmd_type == "rest_option":
+        return cmd.get("name", cmd.get("option", "?"))
+
+    if cmd_type == "shop_open":
+        return t("cmd.shop_open")
+
+    if cmd_type == "shop_buy":
+        return t("cmd.shop_buy", label=cmd.get("name", "?"))
+
+    if cmd_type == "shop_leave":
+        return t("cmd.shop_leave")
+
+    if cmd_type == "select_card":
+        return t("cmd.select_card", label=cmd.get("card", "?"))
+
+    if cmd_type == "skip":
+        return t("cmd.skip")
+
+    if cmd_type == "choose_hand_cards":
+        return t("cmd.choose_hand_cards", label=cmd.get("card", "?"))
+
+    if cmd_type == "confirm_selection":
+        return t("cmd.confirm_selection")
+
+    if cmd_type == "select_reward":
+        return t("cmd.select_reward", label=cmd.get("reward", "?"))
+
+    if cmd_type == "select_character":
+        return t("cmd.select_character", label=cmd.get("name", "?"))
+
+    if cmd_type == "embark":
+        return t("cmd.embark")
+
+    if cmd_type == "start_run":
+        return t("cmd.start_run")
+
+    if cmd_type == "continue_run":
+        return t("cmd.continue_run")
+
+    if cmd_type == "abandon_run":
+        return t("cmd.abandon_run")
+
+    # Fallback: raw key dump for unknown command types
+    detail_parts = [f"{k}={v}" for k, v in cmd.items() if k != "type"]
+    detail = " " + " ".join(detail_parts) if detail_parts else ""
+    return f"{cmd_type}{detail}"

@@ -8,7 +8,7 @@ import sys
 import time
 from api import STS2API
 from state import GameState
-from renderer import render
+from renderer import render, format_command
 from llm import Agent, RandomAgent, LLMAgent
 from obs import OBSOverlay
 from i18n import t, set_lang
@@ -271,9 +271,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             if "target" in decision:
                 cmd["targetIndex"] = decision["target"]
 
-            cmd_type = cmd.get("type", "?")
-            detail_parts = [f"{k}={v}" for k, v in cmd.items() if k != "type"]
-            detail = " ".join(detail_parts)
+            formatted = format_command(cmd)
             # Reasoning was already streamed to console and OBS
             if agent.last_reasoning:
                 print()  # newline after streamed reasoning
@@ -282,11 +280,9 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             if isinstance(agent, LLMAgent):
                 obs.on_kb_update(agent.in_run_kb, agent.cross_run_kb)
 
-            action_text = f"--> {cmd_type} {detail}".strip()
-            obs.on_reasoning_action(action_text)
+            obs.on_reasoning_action(f"--> {formatted}")
 
-            action_label = t("client.action", cmd_type=cmd_type, detail=detail).strip()
-            print(f"\n  {C.GREEN}{C.BOLD}-->{C.RESET} {action_label}")
+            print(f"\n  {C.GREEN}{C.BOLD}-->{C.RESET} {formatted}")
             print(f"{C.DIM}{'-' * 60}{C.RESET}")
 
             if delay < 0:

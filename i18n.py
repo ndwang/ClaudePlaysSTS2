@@ -48,12 +48,12 @@ def get_lang() -> str:
     return _lang
 
 
-def t(key: str, **kwargs) -> str:
+def t(_key: str, **kwargs) -> str:
     """Look up a translated string by key, formatting with kwargs if provided."""
     _ensure_loaded(_lang)
     _ensure_loaded("en")
     strings = _strings.get(_lang, {})
-    template = strings.get(key) or _strings["en"].get(key, key)
+    template = strings.get(_key) or _strings["en"].get(_key, _key)
     return template.format(**kwargs) if kwargs else template
 
 
