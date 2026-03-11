@@ -35,11 +35,9 @@ Use update_knowledge_base with store="cross_run" to save any insights. You do NO
 
 
 SUMMARIZATION_PROMPT = """\
-You are summarizing your play history in Slay the Spire 2 for context continuity.
-
-Summarize the game history below into a concise narrative. Focus on:
+Summarize your play history so far into a concise narrative. Your conversation history will be cleared after this — the summary is all you'll have. Focus on:
 - Key events: fights, rewards taken/skipped, events chosen, path decisions
 - Strategic context: deck direction, HP trajectory, key relics/cards acquired
-- Lessons: what worked, what was risky, current plan going forward
+- Your reasoning: what worked, what was risky, current plan going forward
 
-Be concise but preserve strategically relevant details. This summary replaces your conversation history — anything not included here will be forgotten."""
+Be concise but preserve strategically relevant details. Do NOT call any tools — just write the summary as text."""

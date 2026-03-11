@@ -175,9 +175,6 @@ class LLMAgent(Agent):
             lines = [f"- {k}: {v}" for k, v in self.in_run_kb.items()]
             parts.append("\n\n## In-Run Knowledge (current run notes)\n" + "\n".join(lines))
 
-        if self._summary:
-            parts.append("\n\n## Run History (summarized)\n" + self._summary)
-
         return "".join(parts)
 
     def _build_api_params(self) -> dict:
@@ -213,45 +210,30 @@ class LLMAgent(Agent):
                 text_parts.append(block.text.strip())
         return "\n".join(thinking_parts) if thinking_parts else "\n".join(text_parts)
 
-    def _messages_to_text(self) -> str:
-        """Convert message history to readable text for summarization."""
-        parts = []
-        for msg in self.messages:
-            content = msg["content"]
-            if isinstance(content, str):
-                parts.append(f"[State]\n{content}")
-            elif isinstance(content, list):
-                for block in content:
-                    if isinstance(block, dict):
-                        if block.get("type") == "tool_result":
-                            text = block.get("content", "")
-                            if text and not text.startswith("OK:"):
-                                parts.append(f"[State]\n{text}")
-                    elif hasattr(block, "type"):
-                        if block.type == "tool_use":
-                            parts.append(f"[Action] {block.name}({json.dumps(block.input)})")
-                        elif block.type == "text" and block.text.strip():
-                            parts.append(f"[Agent] {block.text.strip()}")
-        return "\n\n".join(parts)
-
     def _summarize(self) -> None:
-        """Compress conversation history into a summary."""
+        """Compress conversation history by asking the same session to summarize itself."""
         from prompts import SUMMARIZATION_PROMPT
 
-        history_text = self._messages_to_text()
-        if not history_text.strip():
+        if not self.messages:
             return
 
-        # Include existing summary for recursive compression
-        content = ""
-        if self._summary:
-            content += f"[Previous Summary]\n{self._summary}\n\n"
-        content += f"[Recent History]\n{history_text}"
+        # If there's a pending tool_use, provide a dummy result before the summarization request
+        if self._pending_tool_use_id:
+            tool_results = list(self._pending_kb_results)
+            tool_results.append({
+                "type": "tool_result",
+                "tool_use_id": self._pending_tool_use_id,
+                "content": "(summarization requested)",
+            })
+            self.messages.append({"role": "user", "content": tool_results + [{"type": "text", "text": SUMMARIZATION_PROMPT}]})
+        else:
+            # Ask the model to summarize — it can see its own full history including thinking
+            self.messages.append({"role": "user", "content": SUMMARIZATION_PROMPT})
 
         params = {
             "model": self.model,
-            "system": SUMMARIZATION_PROMPT,
-            "messages": [{"role": "user", "content": content}],
+            "system": self._build_system_prompt(),
+            "messages": self.messages,
             "max_tokens": 1024,
         }
         if self.thinking_budget > 0:
@@ -421,6 +403,11 @@ class LLMAgent(Agent):
             self._summarize()
 
         # Build user message with tool_result(s)
+        # After summarization, prepend summary to the first user message
+        if self._summary:
+            briefing = f"CONVERSATION HISTORY SUMMARY (prior context was condensed):\n{self._summary}\n\nCurrent state:\n{briefing}"
+            self._summary = ""
+
         if self._pending_tool_use_id is None:
             self.messages.append({"role": "user", "content": briefing})
         else:
