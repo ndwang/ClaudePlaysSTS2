@@ -31,6 +31,9 @@ class OBSOverlay:
         state = _load_state()
         self.high_score: int = int(state.get("high_score", 0))
         self.total_rounds: int = int(state.get("total_rounds", 0))
+        self._last_kb: dict = state.get("kb", {"in_run": {}, "cross_run": {}})
+        self._reasoning_blocks: list[dict] = state.get("reasoning_blocks", [])
+        self._current_reasoning: str = ""
         self._ws = None
 
         try:
@@ -61,7 +64,12 @@ class OBSOverlay:
             log.warning("Failed to emit '%s': %s", event_name, e)
 
     def _save(self) -> None:
-        _save_state({"high_score": self.high_score, "total_rounds": self.total_rounds})
+        _save_state({
+            "high_score": self.high_score,
+            "total_rounds": self.total_rounds,
+            "kb": self._last_kb,
+            "reasoning_blocks": self._reasoning_blocks,
+        })
 
     def reset(self) -> None:
         """Reset all overlay values."""
@@ -84,23 +92,33 @@ class OBSOverlay:
 
     def on_reasoning_clear(self) -> None:
         """Clear the reasoning overlay for a new decision."""
+        self._current_reasoning = ""
         self._emit("reasoning-clear", {})
 
     def on_reasoning_delta(self, text: str) -> None:
         """Stream a reasoning text chunk to the OBS overlay."""
+        self._current_reasoning += text
         self._emit("reasoning-delta", {"text": text})
 
     def on_reasoning(self, text: str) -> None:
         """Push full agent reasoning text to the OBS overlay (fallback)."""
+        self._current_reasoning = text
         self._emit("reasoning-update", {"text": text})
 
     def on_reasoning_action(self, text: str) -> None:
         """Show the chosen action in the reasoning overlay and close the block."""
+        self._reasoning_blocks.append({"text": self._current_reasoning, "action": text})
+        # Keep only the last 20 blocks
+        self._reasoning_blocks = self._reasoning_blocks[-20:]
+        self._current_reasoning = ""
+        self._save()
         self._emit("reasoning-action", {"text": text})
 
     def on_kb_update(self, in_run_kb: dict[str, str], cross_run_kb: dict[str, str]) -> None:
         """Push knowledge base contents to the OBS overlay."""
-        self._emit("kb-update", {"in_run": in_run_kb, "cross_run": cross_run_kb})
+        self._last_kb = {"in_run": dict(in_run_kb), "cross_run": dict(cross_run_kb)}
+        self._save()
+        self._emit("kb-update", self._last_kb)
 
     def on_game_over(self, score: int) -> None:
         """Call when game over is reached."""

@@ -20,20 +20,19 @@
 </head>
 <body>
 
-<h2>Overlays</h2>
-<div class="panels">
-  <div>
-    <div style="color:#666;font-size:12px;margin-bottom:4px">reasoning.html (480x600)</div>
-    <iframe id="reasoning-frame" src="reasoning.html" width="480" height="600"></iframe>
+<h2>Full Stream Preview (1920x1080)</h2>
+<div style="position:relative;width:1920px;height:1080px;border:1px solid #333;background:#000;transform:scale(0.55);transform-origin:top left;margin-bottom:-480px">
+  <!-- Game placeholder -->
+  <div style="position:absolute;left:0;top:0;width:1440px;height:900px;background:#1a1a3a;display:flex;align-items:center;justify-content:center;color:#444;font-size:24px;border:1px dashed #333">
+    Game (1440x900)
   </div>
-  <div>
-    <div style="color:#666;font-size:12px;margin-bottom:4px">knowledge.html (480x600)</div>
-    <iframe id="knowledge-frame" src="knowledge.html" width="480" height="600"></iframe>
-  </div>
-  <div>
-    <div style="color:#666;font-size:12px;margin-bottom:4px">overlay.html (960x120)</div>
-    <iframe id="overlay-frame" src="overlay.html" width="960" height="120"></iframe>
-  </div>
+  <!-- Stats bar below game -->
+  <iframe id="overlay-frame" src="overlay.html" width="1440" height="80" style="position:absolute;left:0;top:900;border:none"></iframe>
+  <!-- Bottom-right fill -->
+  <div style="position:absolute;left:0;top:980;width:1440px;height:100px;background:rgba(0,0,0,0.8)"></div>
+  <!-- Right sidebar -->
+  <iframe id="knowledge-frame" src="knowledge.html" width="480" height="380" style="position:absolute;left:1440;top:0;border:none"></iframe>
+  <iframe id="reasoning-frame" src="reasoning.html" width="480" height="700" style="position:absolute;left:1440;top:380;border:none"></iframe>
 </div>
 
 <h2>Reasoning</h2>
