@@ -71,7 +71,8 @@ def _render_combat(gs: GameState) -> str:
         intent_parts = []
         for i in e.intents:
             if i.type == "Attack":
-                s = t("combat.attack", damage=i.damage)
+                dmg = i.damage // i.hits if i.hits and i.hits > 1 else i.damage
+                s = t("combat.attack", damage=dmg)
                 if i.hits and i.hits > 1:
                     s += t("combat.hits", hits=i.hits)
                 intent_parts.append(s)

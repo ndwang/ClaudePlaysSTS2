@@ -355,7 +355,10 @@ class LLMAgent(Agent):
                 serialized = []
                 for block in content:
                     if hasattr(block, "model_dump"):
-                        serialized.append(block.model_dump())
+                        d = block.model_dump()
+                        # Remove SDK-only fields that the API rejects
+                        d.pop("parsed_output", None)
+                        serialized.append(d)
                     else:
                         serialized.append(block)
                 out.append({"role": msg["role"], "content": serialized})
@@ -381,13 +384,24 @@ class LLMAgent(Agent):
             state = json.loads(RUN_STATE_FILE.read_text(encoding="utf-8"))
         except (FileNotFoundError, json.JSONDecodeError, ValueError):
             return False
-        self.messages = state.get("messages", [])
+        self.messages = self._clean_loaded_messages(state.get("messages", []))
         self._pending_tool_use_id = state.get("pending_tool_use_id")
         self._pending_kb_results = state.get("pending_kb_results", [])
         self.in_run_kb = state.get("in_run_kb", {})
         self.last_reasoning = state.get("last_reasoning", "")
         self._summary = state.get("summary", "")
         return True
+
+    @staticmethod
+    def _clean_loaded_messages(messages: list[dict]) -> list[dict]:
+        """Strip SDK-only fields (e.g. parsed_output) from loaded messages."""
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict):
+                        block.pop("parsed_output", None)
+        return messages
 
     @staticmethod
     def clear_run_state() -> None:
