@@ -82,8 +82,8 @@
 <body>
 <div id="container">
   <div class="section" id="in-run-section">
-    <div class="section-header in-run">Current Run Notes</div>
-    <div id="in-run-entries"><span class="empty">No notes yet</span></div>
+    <div class="section-header in-run" data-i18n="current_run_notes">Current Run Notes</div>
+    <div id="in-run-entries"><span class="empty" data-i18n="no_notes">No notes yet</span></div>
   </div>
 </div>
 <script>
@@ -225,7 +225,7 @@
     if (keys.length === 0 && !container.querySelector('.empty')) {
       setTimeout(() => {
         if (container.querySelectorAll('.entry').length === 0 && !container.querySelector('.empty')) {
-          container.innerHTML = '<span class="empty">No entries yet</span>';
+          container.innerHTML = '<span class="empty">' + (window._locale && window._locale.no_notes || 'No notes yet') + '</span>';
         }
       }, 1500);
     }
@@ -263,6 +263,15 @@
     if (kb) {
       renderInstant(inRunEl, kb.in_run || {});
     }
+  }).catch(() => {});
+
+  // Load locale strings
+  fetch('locale.json').then(r => r.json()).then(loc => {
+    window._locale = loc;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.dataset.i18n;
+      if (loc[key]) el.textContent = loc[key];
+    });
   }).catch(() => {});
 
   // Bridge: accept postMessage and re-dispatch as CustomEvent (for iframe testing)

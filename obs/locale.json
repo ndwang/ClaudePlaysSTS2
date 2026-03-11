@@ -1,0 +1,10 @@
+{
+  "rounds": "回合",
+  "time": "用时",
+  "high_score": "最高分",
+  "agent_reasoning": "AI 思考过程",
+  "current_run_notes": "当前运行笔记",
+  "learned_knowledge": "学到的知识",
+  "no_notes": "暂无笔记",
+  "no_entries": "暂无记录"
+}

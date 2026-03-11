@@ -9,61 +9,64 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from pathlib import Path
 
+from i18n import t
 from state import GameState
 
 
 KB_FILE = Path(__file__).parent / "knowledge.json"
 RUN_STATE_FILE = Path(__file__).parent / "run_state.json"
 
-PLAY_ACTION_TOOL = {
-    "name": "play_action",
-    "description": "Execute a game action by its index from the available commands list.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "index": {
-                "type": "integer",
-                "description": "The command index from the Commands list",
-            },
-            "target": {
-                "type": "integer",
-                "description": "Target enemy index, required for cards/potions marked *target*",
+
+def _build_tools() -> list[dict]:
+    """Build tool definitions with localized descriptions."""
+    return [
+        {
+            "name": "play_action",
+            "description": t("tool.play_action.desc"),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "index": {
+                        "type": "integer",
+                        "description": t("tool.play_action.index_desc"),
+                    },
+                    "target": {
+                        "type": "integer",
+                        "description": t("tool.play_action.target_desc"),
+                    },
+                },
+                "required": ["index"],
             },
         },
-        "required": ["index"],
-    },
-}
-
-UPDATE_KB_TOOL = {
-    "name": "update_knowledge_base",
-    "description": "Add, update, or delete entries in your knowledge base. Use 'in_run' for current run notes (deck strategy, fight plans). Use 'cross_run' for lessons that apply to future runs.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "store": {
-                "type": "string",
-                "enum": ["in_run", "cross_run"],
-                "description": "Which knowledge base to update",
-            },
-            "operation": {
-                "type": "string",
-                "enum": ["set", "delete"],
-                "description": "Set (add/update) or delete an entry",
-            },
-            "key": {
-                "type": "string",
-                "description": "The entry key (short label)",
-            },
-            "value": {
-                "type": "string",
-                "description": "The entry value (required for 'set' operation)",
+        {
+            "name": "update_knowledge_base",
+            "description": t("tool.update_kb.desc"),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "store": {
+                        "type": "string",
+                        "enum": ["in_run", "cross_run"],
+                        "description": t("tool.update_kb.store_desc"),
+                    },
+                    "operation": {
+                        "type": "string",
+                        "enum": ["set", "delete"],
+                        "description": t("tool.update_kb.operation_desc"),
+                    },
+                    "key": {
+                        "type": "string",
+                        "description": t("tool.update_kb.key_desc"),
+                    },
+                    "value": {
+                        "type": "string",
+                        "description": t("tool.update_kb.value_desc"),
+                    },
+                },
+                "required": ["store", "operation", "key"],
             },
         },
-        "required": ["store", "operation", "key"],
-    },
-}
-
-TOOLS = [PLAY_ACTION_TOOL, UPDATE_KB_TOOL]
+    ]
 
 
 def _load_cross_run_kb() -> dict[str, str]:
@@ -165,16 +168,16 @@ class LLMAgent(Agent):
                 time.sleep(wait)
 
     def _build_system_prompt(self) -> str:
-        from prompts import SYSTEM_PROMPT
-        parts = [SYSTEM_PROMPT]
+        from prompts import system_prompt
+        parts = [system_prompt()]
 
         if self.cross_run_kb:
             lines = [f"- {k}: {v}" for k, v in self.cross_run_kb.items()]
-            parts.append("\n\n## Cross-Run Knowledge (persistent lessons)\n" + "\n".join(lines))
+            parts.append(t("prompt.cross_run_kb_header") + "\n".join(lines))
 
         if self.in_run_kb:
             lines = [f"- {k}: {v}" for k, v in self.in_run_kb.items()]
-            parts.append("\n\n## In-Run Knowledge (current run notes)\n" + "\n".join(lines))
+            parts.append(t("prompt.in_run_kb_header") + "\n".join(lines))
 
         return "".join(parts)
 
@@ -183,7 +186,7 @@ class LLMAgent(Agent):
         params = {
             "model": self.model,
             "system": self._build_system_prompt(),
-            "tools": TOOLS,
+            "tools": _build_tools(),
             "messages": self.messages,
         }
         if self.thinking_budget > 0:
@@ -213,7 +216,7 @@ class LLMAgent(Agent):
 
     def _summarize(self) -> None:
         """Compress conversation history by asking the same session to summarize itself."""
-        from prompts import SUMMARIZATION_PROMPT
+        from prompts import summarization_prompt
 
         if not self.messages:
             return
@@ -224,12 +227,12 @@ class LLMAgent(Agent):
             tool_results.append({
                 "type": "tool_result",
                 "tool_use_id": self._pending_tool_use_id,
-                "content": "(summarization requested)",
+                "content": t("llm.summarization_requested"),
             })
-            self.messages.append({"role": "user", "content": tool_results + [{"type": "text", "text": SUMMARIZATION_PROMPT}]})
+            self.messages.append({"role": "user", "content": tool_results + [{"type": "text", "text": summarization_prompt()}]})
         else:
             # Ask the model to summarize — it can see its own full history including thinking
-            self.messages.append({"role": "user", "content": SUMMARIZATION_PROMPT})
+            self.messages.append({"role": "user", "content": summarization_prompt()})
 
         params = {
             "model": self.model,
@@ -311,26 +314,26 @@ class LLMAgent(Agent):
         value = inp.get("value", "")
 
         if not key:
-            return "Error: key is required."
+            return t("llm.kb_error_no_key")
 
         kb = self.in_run_kb if store == "in_run" else self.cross_run_kb
 
         if operation == "set":
             if not value:
-                return "Error: value is required for 'set' operation."
+                return t("llm.kb_error_no_value")
             kb[key] = value
             if store == "cross_run":
                 _save_cross_run_kb(self.cross_run_kb)
-            return f"OK: {store}[{key}] = {value}"
+            return t("llm.kb_ok_set", store=store, key=key, value=value)
         elif operation == "delete":
             if key in kb:
                 del kb[key]
                 if store == "cross_run":
                     _save_cross_run_kb(self.cross_run_kb)
-                return f"OK: deleted {store}[{key}]"
-            return f"Warning: key '{key}' not found in {store}."
+                return t("llm.kb_ok_delete", store=store, key=key)
+            return t("llm.kb_warn_not_found", key=key, store=store)
         else:
-            return f"Error: unknown operation '{operation}'."
+            return t("llm.kb_error_unknown_op", operation=operation)
 
     def _process_response(self, response, num_commands: int | None) -> dict | None:
         """Process a response, handle KB calls, return action dict if play_action found.
@@ -349,7 +352,7 @@ class LLMAgent(Agent):
             # No tool call (can happen with thinking mode's tool_choice: auto)
             self.messages.append({
                 "role": "user",
-                "content": "You must use the play_action tool to take your action.",
+                "content": t("llm.must_use_tool"),
             })
             return None
 
@@ -378,7 +381,7 @@ class LLMAgent(Agent):
                     results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
-                        "content": f"Error: Invalid command index {index}. Valid: 0-{num_commands - 1}.",
+                        "content": t("llm.invalid_index", index=index, max_index=num_commands - 1),
                         "is_error": True,
                     })
 
@@ -394,11 +397,16 @@ class LLMAgent(Agent):
         else:
             self.messages.append({
                 "role": "user",
-                "content": "You must use the play_action tool to take your action.",
+                "content": t("llm.must_use_tool"),
             })
         return None
 
     def decide(self, gs: GameState, briefing: str) -> dict:
+        # Guard: if previous decide() failed mid-way, messages may end with a
+        # user message.  Pop it so we don't create consecutive user messages.
+        if self.messages and self.messages[-1].get("role") == "user":
+            self.messages.pop()
+
         # Summarize if history is getting long
         if len(self.messages) >= self.SUMMARIZE_THRESHOLD:
             self._summarize()
@@ -406,7 +414,7 @@ class LLMAgent(Agent):
         # Build user message with tool_result(s)
         # After summarization, prepend summary to the first user message
         if self._summary:
-            briefing = f"CONVERSATION HISTORY SUMMARY (prior context was condensed):\n{self._summary}\n\nCurrent state:\n{briefing}"
+            briefing = t("prompt.history_summary", summary=self._summary) + briefing
             self._summary = ""
 
         if self._pending_tool_use_id is None:
@@ -419,6 +427,7 @@ class LLMAgent(Agent):
                 "content": briefing,
             })
             self.messages.append({"role": "user", "content": tool_results})
+            self._pending_tool_use_id = None
             self._pending_kb_results = []
 
         num_commands = len(gs.commands)
@@ -434,17 +443,17 @@ class LLMAgent(Agent):
 
     def reflect(self, briefing: str) -> None:
         """Post-run reflection: agent reviews the run and updates cross-run KB."""
-        from prompts import REFLECTION_PROMPT
+        from prompts import reflection_prompt
 
         # Send game over state + reflection prompt
         if self._pending_tool_use_id is None:
-            self.messages.append({"role": "user", "content": f"{briefing}\n\n{REFLECTION_PROMPT}"})
+            self.messages.append({"role": "user", "content": f"{briefing}\n\n{reflection_prompt()}"})
         else:
             tool_results = list(self._pending_kb_results)
             tool_results.append({
                 "type": "tool_result",
                 "tool_use_id": self._pending_tool_use_id,
-                "content": f"{briefing}\n\n{REFLECTION_PROMPT}",
+                "content": f"{briefing}\n\n{reflection_prompt()}",
             })
             self.messages.append({"role": "user", "content": tool_results})
             self._pending_tool_use_id = None
@@ -454,7 +463,7 @@ class LLMAgent(Agent):
         params = {
             "model": self.model,
             "system": self._build_system_prompt(),
-            "tools": TOOLS,
+            "tools": _build_tools(),
             "messages": self.messages,
             "max_tokens": 2048,
             "tool_choice": {"type": "auto"},
@@ -490,7 +499,7 @@ class LLMAgent(Agent):
                     results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
-                        "content": "No action needed during reflection.",
+                        "content": t("llm.no_action_reflection"),
                         "is_error": True,
                     })
 

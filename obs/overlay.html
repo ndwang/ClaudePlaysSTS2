@@ -42,15 +42,15 @@
 <body>
 <div id="bar">
   <div class="stat">
-    <div class="label">Rounds</div>
+    <div class="label" data-i18n="rounds">Rounds</div>
     <div class="value" id="round">0</div>
   </div>
   <div class="stat">
-    <div class="label">Time</div>
+    <div class="label" data-i18n="time">Time</div>
     <div class="value" id="time">0:00:00</div>
   </div>
   <div class="stat">
-    <div class="label">High Score</div>
+    <div class="label" data-i18n="high_score">High Score</div>
     <div class="value" id="high-score">0</div>
   </div>
 </div>
@@ -121,6 +121,14 @@
   fetch('state.json').then(r => r.json()).then(state => {
     if (state.total_rounds !== undefined) roundEl.textContent = state.total_rounds;
     if (state.high_score !== undefined) hsEl.textContent = state.high_score;
+  }).catch(() => {});
+
+  // Load locale strings
+  fetch('locale.json').then(r => r.json()).then(loc => {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.dataset.i18n;
+      if (loc[key]) el.textContent = loc[key];
+    });
   }).catch(() => {});
 
   // Bridge: accept postMessage and re-dispatch as CustomEvent (for iframe testing)

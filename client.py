@@ -11,6 +11,7 @@ from state import GameState
 from renderer import render
 from llm import Agent, RandomAgent, LLMAgent
 from obs import OBSOverlay
+from i18n import t, set_lang
 
 ANSI_RE = re.compile(r"\033\[[0-9;]*m")
 
@@ -77,25 +78,25 @@ def auto_resolve(gs: GameState) -> dict | None:
 
     cmd_types = {cmd.get("type") for cmd in commands}
 
-    # Only proceed/continue available → just do it
+    # Only proceed/continue available -> just do it
     if cmd_types <= {"proceed", "continue"}:
         for i, cmd in enumerate(commands):
             if cmd.get("type") in ("proceed", "continue"):
                 return {"action": i}
 
-    # Main menu → start or continue run
+    # Main menu -> start or continue run
     if gs.context == "main_menu":
         for i, cmd in enumerate(commands):
             if cmd.get("type") in ("start_run", "continue_run"):
                 return {"action": i}
 
-    # Shop not open → open first
+    # Shop not open -> open first
     if gs.shop and not gs.shop.is_open:
         for i, cmd in enumerate(commands):
             if cmd.get("type") == "shop_open":
                 return {"action": i}
 
-    # Rewards → auto-claim gold and relics
+    # Rewards -> auto-claim gold and relics
     if gs.overlay_type == "rewards" and gs.overlay:
         for i, cmd in enumerate(commands):
             if cmd.get("type") == "select_reward":
@@ -137,7 +138,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
     # Attempt crash recovery for LLM agent
     recovered = isinstance(agent, LLMAgent) and agent.load_run_state()
     if recovered:
-        print(f"{C.YELLOW}{C.BOLD}Recovered saved run state. Resuming...{C.RESET}")
+        print(f"{C.YELLOW}{C.BOLD}{t('client.recovered')}{C.RESET}")
         obs.on_kb_update(agent.in_run_kb, agent.cross_run_kb)
 
     shutdown_requested = False
@@ -145,10 +146,10 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
     def _signal_handler(signum, frame):
         nonlocal shutdown_requested
         if shutdown_requested:
-            print(f"\n{C.RED}{C.BOLD}Forced shutdown.{C.RESET}")
+            print(f"\n{C.RED}{C.BOLD}{t('client.forced_shutdown')}{C.RESET}")
             sys.exit(1)
         shutdown_requested = True
-        print(f"\n{C.YELLOW}{C.BOLD}Shutdown requested. Will stop after current action completes...{C.RESET}")
+        print(f"\n{C.YELLOW}{C.BOLD}{t('client.shutdown')}{C.RESET}")
 
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
@@ -156,7 +157,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
     game_over_seen = False
     round_num = 0
     round_counted = False  # track to avoid double-counting on retries
-    print(f"{C.CYAN}{C.BOLD}STS2 client starting. Waiting for game...{C.RESET}")
+    print(f"{C.CYAN}{C.BOLD}{t('client.starting')}{C.RESET}")
 
     try:
         while not shutdown_requested:
@@ -164,7 +165,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             try:
                 raw = api.wait_for_state(timeout_ms=30000)
             except Exception as e:
-                print(f"{C.YELLOW}WARNING: Connection error: {e}. Retrying in 3s...{C.RESET}")
+                print(f"{C.YELLOW}{t('client.conn_error', error=e)}{C.RESET}")
                 time.sleep(3)
                 continue
 
@@ -174,9 +175,9 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             # Update internal state
             gs.update(raw)
 
-            # No commands available — server returned transient state
+            # No commands available -- server returned transient state
             if not gs.commands:
-                print(f"{C.YELLOW}WARNING: No commands available. Retrying in 3s...{C.RESET}")
+                print(f"{C.YELLOW}{t('client.no_commands')}{C.RESET}")
                 time.sleep(3)
                 continue
 
@@ -185,13 +186,13 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
                 if gs.game_over and not game_over_seen:
                     obs.on_game_over(gs.game_over.score)
                     print(f"\n{C.RED}{C.BOLD}{'=' * 60}")
-                    print(f"{' GAME OVER ':=^60}")
+                    print(f"{t('client.gameover_banner'):=^60}")
                     print(f"{'=' * 60}{C.RESET}")
                     briefing = render(gs)
                     print(briefing)
 
                     # Post-run reflection
-                    print(f"\n{C.CYAN}{C.BOLD}Agent reflecting on run...{C.RESET}")
+                    print(f"\n{C.CYAN}{C.BOLD}{t('client.reflecting')}{C.RESET}")
                     obs.on_reasoning_clear()
                     try:
                         agent.reflect(briefing)
@@ -200,10 +201,10 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
                         if isinstance(agent, LLMAgent):
                             obs.on_kb_update(agent.in_run_kb, agent.cross_run_kb)
                     except Exception as e:
-                        print(f"{C.YELLOW}WARNING: Reflection failed: {e}{C.RESET}")
+                        print(f"{C.YELLOW}{t('client.reflect_failed', error=e)}{C.RESET}")
 
                 if game_over_seen and confirm:
-                    input("Press Enter to continue...")
+                    input(t("client.press_enter"))
                 game_over_seen = True
             else:
                 game_over_seen = False
@@ -213,11 +214,11 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             if auto is not None:
                 cmd = gs.commands[auto["action"]].copy()
                 cmd_type = cmd.get("type", "?")
-                print(f"  {C.DIM}>> Auto: {cmd_type}{C.RESET}")
+                print(f"  {C.DIM}{t('client.auto', cmd_type=cmd_type)}{C.RESET}")
                 try:
                     api.send_action(cmd)
                 except Exception as e:
-                    print(f"{C.RED}ERROR: Auto-resolve failed: {e}{C.RESET}")
+                    print(f"{C.RED}{t('client.auto_failed', error=e)}{C.RESET}")
                 continue
 
             # --- Agent decision needed ---
@@ -237,7 +238,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
                 obs.on_round()
                 round_counted = True
             color = CONTEXT_COLORS.get(ctx_label, C.WHITE)
-            header = f" Round {round_num} | {ctx_label} " if round_num > 0 else f" {ctx_label} "
+            header = t("client.round_header", round=round_num, ctx=ctx_label) if round_num > 0 else f" {ctx_label} "
             separator = "=" * 60
             print(f"\n{color}{C.BOLD}{separator}")
             print(f"{header:=^60}")
@@ -262,7 +263,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             try:
                 decision = agent.decide(gs, briefing)
             except Exception as e:
-                print(f"{C.RED}ERROR: Agent error: {e}. Retrying...{C.RESET}")
+                print(f"{C.RED}{t('client.agent_error', error=e)}{C.RESET}")
                 continue
 
             action_idx = decision["action"]
@@ -284,21 +285,22 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             action_text = f"--> {cmd_type} {detail}".strip()
             obs.on_reasoning_action(action_text)
 
-            print(f"\n  {C.GREEN}{C.BOLD}-->{C.RESET} Action: {C.GREEN}{cmd_type}{C.RESET} {C.DIM}{detail}{C.RESET}")
+            action_label = t("client.action", cmd_type=cmd_type, detail=detail).strip()
+            print(f"\n  {C.GREEN}{C.BOLD}-->{C.RESET} {action_label}")
             print(f"{C.DIM}{'-' * 60}{C.RESET}")
 
             if delay < 0:
-                input(f"  {C.DIM}Press Enter to execute...{C.RESET}")
+                input(f"  {C.DIM}{t('client.press_execute')}{C.RESET}")
 
             # Execute
             try:
                 result = api.send_action(cmd)
             except Exception as e:
-                print(f"{C.RED}ERROR: Action failed: {e}{C.RESET}")
+                print(f"{C.RED}{t('client.action_failed', error=e)}{C.RESET}")
                 continue
 
             if "error" in result:
-                print(f"{C.RED}ERROR: Server error: {result['error']}{C.RESET}")
+                print(f"{C.RED}{t('client.server_error', error=result['error'])}{C.RESET}")
                 continue
 
             # Update state from action response
@@ -321,6 +323,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", default="claude-sonnet-4-20250514", help="Claude model ID (for llm agent)")
     parser.add_argument("--thinking-budget", type=int, default=0, help="Extended thinking token budget (0=disabled, e.g. 4000)")
     parser.add_argument("--speed", default="normal", choices=SPEED_DELAYS.keys(), help="Decision speed (fast/normal/slow)")
+    parser.add_argument("--lang", default="en", choices=["en", "zh"], help="Display language (en/zh)")
     parser.add_argument("--obs-host", default="localhost", help="OBS WebSocket host")
     parser.add_argument("--obs-port", type=int, default=4455, help="OBS WebSocket port")
     parser.add_argument("--obs-password", default=os.environ.get("OBS_WEBSOCKET_PASSWORD", ""), help="OBS WebSocket password (or set OBS_WEBSOCKET_PASSWORD env var)")
@@ -328,6 +331,8 @@ if __name__ == "__main__":
     parser.add_argument("--confirm", action="store_true", help="Pause for human confirmation at end of each run")
     parser.add_argument("--log", default="", help="Path to log file (appends clean text, no ANSI codes)")
     args = parser.parse_args()
+
+    set_lang(args.lang)
 
     run(base_url=args.url, agent_type=args.agent, model=args.model, delay=SPEED_DELAYS[args.speed],
         thinking_budget=args.thinking_budget,

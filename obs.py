@@ -28,6 +28,9 @@ class OBSOverlay:
 
     def __init__(self, obs_host: str = "localhost", obs_port: int = 4455, obs_password: str = "") -> None:
         OBS_DIR.mkdir(exist_ok=True)
+        # Write overlay locale strings for HTML browser sources
+        from i18n import write_overlay_locale
+        write_overlay_locale(OBS_DIR)
         state = _load_state()
         self.high_score: int = int(state.get("high_score", 0))
         self.total_rounds: int = int(state.get("total_rounds", 0))

@@ -62,9 +62,9 @@
 </head>
 <body>
 <div id="container">
-  <div id="label">Learned Knowledge</div>
+  <div id="label" data-i18n="learned_knowledge">Learned Knowledge</div>
   <div id="ticker-wrap">
-    <div id="ticker"><span class="empty-msg">No entries yet</span></div>
+    <div id="ticker"><span class="empty-msg" data-i18n="no_entries">No entries yet</span></div>
   </div>
 </div>
 <script>
@@ -85,7 +85,7 @@
   function buildTicker() {
     const keys = Object.keys(entries);
     if (keys.length === 0) {
-      ticker.innerHTML = '<span class="empty-msg">No entries yet</span>';
+      ticker.innerHTML = '<span class="empty-msg">' + (window._locale && window._locale.no_entries || 'No entries yet') + '</span>';
       ticker.style.transform = '';
       offset = 0;
       if (animId) { cancelAnimationFrame(animId); animId = null; }
@@ -138,6 +138,15 @@
       entries = kb.cross_run;
       buildTicker();
     }
+  }).catch(() => {});
+
+  // Load locale strings
+  fetch('locale.json').then(r => r.json()).then(loc => {
+    window._locale = loc;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.dataset.i18n;
+      if (loc[key]) el.textContent = loc[key];
+    });
   }).catch(() => {});
 
   // Bridge: accept postMessage and re-dispatch as CustomEvent (for iframe testing)

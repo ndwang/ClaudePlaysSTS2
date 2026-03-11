@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from collections import Counter
+from i18n import t
 from state import (
     GameState, PlayerState, CombatState, Card,
     CardSelectionOverlay, HandSelectionOverlay, RewardsOverlay,
@@ -44,7 +45,7 @@ def render(gs: GameState) -> str:
     elif gs.context == "main_menu":
         parts.append(_render_main_menu(gs))
     else:
-        parts.append(f"Unknown context: {gs.context}")
+        parts.append(t("unknown_context", context=gs.context))
 
     # Commands
     parts.append(_render_commands(gs))
@@ -59,54 +60,55 @@ def render(gs: GameState) -> str:
 def _render_combat(gs: GameState) -> str:
     c = gs.combat
     p = gs.player
-    lines = [f"COMBAT Round {c.round} | HP:{p.hp}/{p.max_hp} Energy:{c.energy} Block:{c.block}"]
+    header = t("combat.header", round=c.round, hp=p.hp, max_hp=p.max_hp, energy=c.energy, block=c.block)
     if c.stars:
-        lines[0] += f" Stars:{c.stars}"
+        header += t("combat.stars", stars=c.stars)
+    lines = [header]
 
     # Enemies
-    lines.append("\nEnemies:")
+    lines.append(t("combat.enemies"))
     for e in c.enemies:
         intent_parts = []
         for i in e.intents:
             if i.type == "Attack":
-                s = f"Attack {i.damage}"
+                s = t("combat.attack", damage=i.damage)
                 if i.hits and i.hits > 1:
-                    s += f"x{i.hits}"
+                    s += t("combat.hits", hits=i.hits)
                 intent_parts.append(s)
             else:
                 intent_parts.append(i.type)
         intent_str = ", ".join(intent_parts)
-        line = f"  [{e.index}] {e.name} {e.hp}/{e.max_hp}"
+        line = t("combat.enemy_line", index=e.index, name=e.name, hp=e.hp, max_hp=e.max_hp)
         if e.block:
-            line += f" Block:{e.block}"
-        line += f" Intent:[{intent_str}]"
+            line += t("combat.block", block=e.block)
+        line += t("combat.intent", intent=intent_str)
         if e.powers:
             pw_strs = [f"{pw.name} {pw.amount}: {pw.description}" for pw in e.powers]
-            line += f" Powers:[{'; '.join(pw_strs)}]"
+            line += t("combat.powers_suffix", powers='; '.join(pw_strs))
         lines.append(line)
 
     # Hand
-    lines.append("\nHand:")
+    lines.append(t("combat.hand"))
     for h in c.hand:
         cost = h.cost if h.cost != -1 else "X"
-        mark = " *target*" if h.target_type in ("AnyEnemy", "AnyAlly") else ""
-        playable = "" if h.playable else " (unplayable)"
-        lines.append(f"  [{h.index}] {h.name}({cost}) {h.description}{mark}{playable}")
+        mark = t("combat.target") if h.target_type in ("AnyEnemy", "AnyAlly") else ""
+        playable = "" if h.playable else t("combat.unplayable")
+        lines.append(t("combat.card_line", index=h.index, name=h.name, cost=cost, desc=h.description, mark=mark, playable=playable))
 
     # Orbs (Defect only)
     if c.orb_slots > 0:
         orb_strs = [f"{o.name}(passive:{o.passive_value} evoke:{o.evoke_value})" for o in c.orbs]
         empty = c.orb_slots - len(c.orbs)
         if empty > 0:
-            orb_strs.append(f"(empty)x{empty}" if empty > 1 else "(empty)")
-        lines.append(f"\nOrbs ({len(c.orbs)}/{c.orb_slots}): {', '.join(orb_strs)}")
+            orb_strs.append(t("combat.empty_orbs", count=empty) if empty > 1 else t("combat.empty_orb"))
+        lines.append(t("combat.orbs", count=len(c.orbs), slots=c.orb_slots, orbs=', '.join(orb_strs)))
 
-    lines.append(f"\nDraw:{c.draw_pile_count} Discard:{c.discard_pile_count} Exhaust:{c.exhaust_pile_count}")
+    lines.append(t("combat.piles", draw=c.draw_pile_count, discard=c.discard_pile_count, exhaust=c.exhaust_pile_count))
 
     # Player powers
     if c.powers:
         pw_strs = [f"{pw.name} {pw.amount}: {pw.description}" for pw in c.powers]
-        lines.append(f"Powers: {'; '.join(pw_strs)}")
+        lines.append(t("combat.powers", powers='; '.join(pw_strs)))
 
     # Relics (always with descriptions)
     lines.append(_render_relics(p))
@@ -121,17 +123,18 @@ def _render_combat(gs: GameState) -> str:
 def _render_card_selection(gs: GameState) -> str:
     ov: CardSelectionOverlay = gs.overlay
     p = gs.player
-    lines = ["CARD SELECTION"]
+    header = t("card_sel.header")
     if ov.can_skip:
-        lines[0] += " (can skip)"
+        header += t("card_sel.can_skip")
     if ov.min_select is not None and ov.max_select is not None:
-        lines[0] += f" (pick {ov.min_select}-{ov.max_select})"
+        header += t("card_sel.pick_range", min=ov.min_select, max=ov.max_select)
+    lines = [header]
 
     for c in ov.cards:
         cost = f"({c.cost})" if c.cost is not None else ""
         lines.append(f"  [{c.index}] {c.name}{cost} {c.description}")
 
-    lines.append(f"\nHP:{p.hp}/{p.max_hp} Gold:{p.gold}")
+    lines.append(t("card_sel.hp_gold", hp=p.hp, max_hp=p.max_hp, gold=p.gold))
     lines.append(_render_deck(p))
     lines.append(_render_relics(p))
     return "\n".join(lines)
@@ -140,13 +143,13 @@ def _render_card_selection(gs: GameState) -> str:
 def _render_hand_selection(gs: GameState) -> str:
     ov: HandSelectionOverlay = gs.overlay
     p = gs.player
-    lines = [f"HAND SELECTION: {ov.prompt}"]
-    lines.append(f"Select {ov.min_select}-{ov.max_select} (selected: {ov.selected_count})")
+    lines = [t("hand_sel.header", prompt=ov.prompt)]
+    lines.append(t("hand_sel.select_range", min=ov.min_select, max=ov.max_select, selected=ov.selected_count))
 
     for c in ov.cards:
         lines.append(f"  [{c.index}] {c.name} {c.description}")
 
-    lines.append(f"\nHP:{p.hp}/{p.max_hp}")
+    lines.append(t("hand_sel.hp", hp=p.hp, max_hp=p.max_hp))
     lines.append(_render_relics(p))
     return "\n".join(lines)
 
@@ -154,12 +157,12 @@ def _render_hand_selection(gs: GameState) -> str:
 def _render_rewards(gs: GameState) -> str:
     ov: RewardsOverlay = gs.overlay
     p = gs.player
-    lines = ["REWARDS"]
+    lines = [t("rewards.header")]
 
     for r in ov.rewards:
         lines.append(f"  [{r.index}] {r.reward_type}: {r.description}")
 
-    lines.append(f"\nHP:{p.hp}/{p.max_hp} Gold:{p.gold}")
+    lines.append(t("rewards.hp_gold", hp=p.hp, max_hp=p.max_hp, gold=p.gold))
     lines.append(_render_relics(p))
     return "\n".join(lines)
 
@@ -167,13 +170,13 @@ def _render_rewards(gs: GameState) -> str:
 def _render_map(gs: GameState) -> str:
     m = gs.map
     p = gs.player
-    pos = f"({m.current_coord[0]},{m.current_coord[1]})" if m.current_coord else "start"
-    lines = [f"MAP Act {m.act} | HP:{p.hp}/{p.max_hp} Gold:{p.gold}"]
-    lines.append(f"Position: {pos}")
+    pos = f"({m.current_coord[0]},{m.current_coord[1]})" if m.current_coord else t("map.start")
+    lines = [t("map.header", act=m.act, hp=p.hp, max_hp=p.max_hp, gold=p.gold)]
+    lines.append(t("map.position", pos=pos))
 
-    lines.append("\nNodes:")
+    lines.append(t("map.nodes"))
     for n in m.available_nodes:
-        lines.append(f"  [{n.index}] ({n.coord[0]},{n.coord[1]}) {n.node_type}")
+        lines.append(t("map.node_line", index=n.index, x=n.coord[0], y=n.coord[1], type=n.node_type))
 
     lines.append("")
     lines.append(_render_deck(p))
@@ -184,19 +187,19 @@ def _render_map(gs: GameState) -> str:
 def _render_event(gs: GameState) -> str:
     ev = gs.event
     p = gs.player
-    lines = [f"EVENT: {ev.title}"]
+    lines = [t("event.header", title=ev.title)]
     lines.append(ev.description)
 
     if ev.finished:
-        lines.append("\n(Event complete)")
+        lines.append(t("event.complete"))
     else:
-        lines.append("\nOptions:")
+        lines.append(t("event.options"))
         for o in ev.options:
-            lock = " [LOCKED]" if o.locked else ""
-            desc = f" - {o.description}" if o.description else ""
+            lock = t("event.locked") if o.locked else ""
+            desc = t("event.option_desc", desc=o.description) if o.description else ""
             lines.append(f"  [{o.index}] {o.label}{desc}{lock}")
 
-    lines.append(f"\nHP:{p.hp}/{p.max_hp} Gold:{p.gold}")
+    lines.append(t("card_sel.hp_gold", hp=p.hp, max_hp=p.max_hp, gold=p.gold))
     lines.append(_render_relics(p))
     return "\n".join(lines)
 
@@ -204,11 +207,11 @@ def _render_event(gs: GameState) -> str:
 def _render_rest(gs: GameState) -> str:
     r = gs.rest
     p = gs.player
-    lines = [f"REST SITE | HP:{p.hp}/{p.max_hp} Gold:{p.gold}"]
+    lines = [t("rest.header", hp=p.hp, max_hp=p.max_hp, gold=p.gold)]
 
-    lines.append("\nOptions:")
+    lines.append(t("rest.options"))
     for o in r.options:
-        enabled = "" if o.enabled else " [DISABLED]"
+        enabled = "" if o.enabled else t("rest.disabled")
         lines.append(f"  [{o.index}] {o.name}: {o.description}{enabled}")
 
     lines.append("")
@@ -220,14 +223,14 @@ def _render_rest(gs: GameState) -> str:
 def _render_shop(gs: GameState) -> str:
     s = gs.shop
     p = gs.player
-    lines = [f"SHOP | HP:{p.hp}/{p.max_hp} Gold:{p.gold}"]
+    lines = [t("shop.header", hp=p.hp, max_hp=p.max_hp, gold=p.gold)]
 
     if not s.is_open:
-        lines.append("(Shop is closed - open it first)")
+        lines.append(t("shop.closed"))
     else:
-        lines.append("\nItems:")
+        lines.append(t("shop.items"))
         for it in s.items:
-            afford = "" if it.affordable else " [can't afford]"
+            afford = "" if it.affordable else t("shop.cant_afford")
             desc = f" {it.description}" if it.description else ""
             lines.append(f"  [{it.index}] [{it.item_type}] {it.name} ({it.cost}g){desc}{afford}")
 
@@ -239,11 +242,11 @@ def _render_shop(gs: GameState) -> str:
 
 
 def _render_treasure(gs: GameState) -> str:
-    t = gs.treasure
+    tr = gs.treasure
     p = gs.player
-    lines = [f"TREASURE | HP:{p.hp}/{p.max_hp} Gold:{p.gold}"]
+    lines = [t("treasure.header", hp=p.hp, max_hp=p.max_hp, gold=p.gold)]
 
-    for r in t.relics:
+    for r in tr.relics:
         lines.append(f"  [{r.index}] {r.name}: {r.description}")
 
     lines.append(_render_relics(p))
@@ -252,32 +255,32 @@ def _render_treasure(gs: GameState) -> str:
 
 def _render_game_over(gs: GameState) -> str:
     go = gs.game_over
-    result = "VICTORY" if go.victory else "DEFEAT"
-    lines = [f"GAME OVER: {result}"]
-    lines.append(f"Character: {go.character} | Score: {go.score}")
-    lines.append(f"Floor: {go.floor_reached} | Seed: {go.seed} | Ascension: {go.ascension}")
+    result = t("gameover.victory") if go.victory else t("gameover.defeat")
+    lines = [t("gameover.header", result=result)]
+    lines.append(t("gameover.character", character=go.character, score=go.score))
+    lines.append(t("gameover.floor", floor=go.floor_reached, seed=go.seed, ascension=go.ascension))
     minutes = int(go.run_time) // 60
     seconds = int(go.run_time) % 60
-    lines.append(f"Time: {minutes}m{seconds}s | Deck: {go.deck_size} cards | Relics: {go.relic_count}")
+    lines.append(t("gameover.time", minutes=minutes, seconds=seconds, deck_size=go.deck_size, relic_count=go.relic_count))
     if go.killed_by:
-        lines.append(f"Killed by: {go.killed_by}")
+        lines.append(t("gameover.killed_by", killed_by=go.killed_by))
     return "\n".join(lines)
 
 
 def _render_character_select(gs: GameState) -> str:
-    lines = ["CHARACTER SELECT"]
+    lines = [t("charsel.header")]
     if gs.selected_character:
-        lines.append(f"Currently selected: {gs.selected_character}")
+        lines.append(t("charsel.selected", name=gs.selected_character))
     for ch in gs.characters or []:
-        lock = " [LOCKED]" if ch.locked else ""
+        lock = t("event.locked") if ch.locked else ""
         lines.append(f"  [{ch.index}] {ch.name}{lock}")
     return "\n".join(lines)
 
 
 def _render_main_menu(gs: GameState) -> str:
-    lines = ["MAIN MENU"]
+    lines = [t("menu.header")]
     if gs.has_saved_run:
-        lines.append("Saved run available.")
+        lines.append(t("menu.saved_run"))
     return "\n".join(lines)
 
 
@@ -287,22 +290,22 @@ def _render_main_menu(gs: GameState) -> str:
 
 def _render_relics(p: PlayerState) -> str:
     if not p.relics:
-        return "Relics: (none)"
+        return t("relics.none")
     relic_strs = [f"{r.name}: {r.description}" for r in p.relics]
-    return "Relics: " + " | ".join(relic_strs)
+    return t("relics.header") + " | ".join(relic_strs)
 
 
 def _render_potions(p: PlayerState) -> str:
     if not p.potions:
-        return "Potions: (none)"
+        return t("potions.none")
     pot_strs = [f"[{pt.slot}] {pt.name}: {pt.description}" for pt in p.potions]
-    return "Potions: " + ", ".join(pot_strs)
+    return t("potions.header") + ", ".join(pot_strs)
 
 
 def _render_deck(p: PlayerState) -> str:
     """Group duplicate cards, include descriptions."""
     if not p.deck:
-        return "Deck(0): (empty)"
+        return t("deck.empty")
 
     # Group by (name, cost, description)
     counts: Counter[str] = Counter()
@@ -320,11 +323,11 @@ def _render_deck(p: PlayerState) -> str:
         entry += f" {c.description}"
         parts.append(entry)
 
-    return f"Deck({len(p.deck)}): " + " | ".join(parts)
+    return t("deck.header", count=len(p.deck)) + " | ".join(parts)
 
 
 def _render_commands(gs: GameState) -> str:
-    lines = ["\nCommands:"]
+    lines = [t("commands.header")]
     for i, cmd in enumerate(gs.commands):
         cmd_type = cmd.get("type", "?")
         detail_parts = []
