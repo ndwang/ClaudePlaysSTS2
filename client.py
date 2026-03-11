@@ -122,6 +122,11 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
     api = STS2API(base_url)
     gs = GameState()
     agent: Agent = RandomAgent() if agent_type == "random" else LLMAgent(model, thinking_budget=thinking_budget)
+
+    # Wire up real-time reasoning streaming for LLM agent
+    if isinstance(agent, LLMAgent):
+        agent.on_reasoning_delta = lambda text: print(f"{C.CYAN}{text}{C.RESET}", end="", flush=True)
+
     obs = OBSOverlay(obs_host=obs_host, obs_port=obs_port, obs_password=obs_password)
     if obs_reset:
         obs.reset()
@@ -172,8 +177,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
                     try:
                         agent.reflect(briefing)
                         if agent.last_reasoning:
-                            for line in agent.last_reasoning.split("\n"):
-                                print(f"  {C.CYAN}{line}{C.RESET}")
+                            print()  # newline after streamed reasoning
                             obs.on_reasoning(agent.last_reasoning)
                     except Exception as e:
                         print(f"{C.YELLOW}WARNING: Reflection failed: {e}{C.RESET}")
@@ -247,14 +251,12 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             cmd_type = cmd.get("type", "?")
             detail_parts = [f"{k}={v}" for k, v in cmd.items() if k != "type"]
             detail = " ".join(detail_parts)
-            print(f"\n  {C.GREEN}{C.BOLD}-->{C.RESET} Action: {C.GREEN}{cmd_type}{C.RESET} {C.DIM}{detail}{C.RESET}")
-
-            # Display reasoning
+            # Reasoning was already streamed to console; send full text to OBS
             if agent.last_reasoning:
-                for line in agent.last_reasoning.split("\n"):
-                    print(f"  {C.CYAN}{line}{C.RESET}")
+                print()  # newline after streamed reasoning
                 obs.on_reasoning(agent.last_reasoning)
 
+            print(f"\n  {C.GREEN}{C.BOLD}-->{C.RESET} Action: {C.GREEN}{cmd_type}{C.RESET} {C.DIM}{detail}{C.RESET}")
             print(f"{C.DIM}{'-' * 60}{C.RESET}")
 
             # Execute

@@ -129,19 +129,33 @@ class LLMAgent(Agent):
         self._pending_kb_results: list[dict] = []
         self.last_reasoning: str = ""
         self._summary: str = ""
+        self.on_reasoning_delta: callable | None = None  # callback(text) for real-time reasoning
 
         # Knowledge bases
         self.in_run_kb: dict[str, str] = {}
         self.cross_run_kb: dict[str, str] = _load_cross_run_kb()
 
-    def _api_call(self, **params):
-        """Call the Anthropic API with timeout handling and retries on transient errors."""
+    def _api_call(self, stream_reasoning: bool = False, **params):
+        """Call the Anthropic API with streaming, retries on transient errors.
+
+        Uses streaming to avoid total-time timeouts (only idle time matters).
+        If stream_reasoning is True, emits thinking/text deltas via on_reasoning_delta callback.
+        Returns the final accumulated Message object (same shape as non-streaming).
+        """
         import anthropic
         log = logging.getLogger(__name__)
         max_attempts = 3
         for attempt in range(1, max_attempts + 1):
             try:
-                return self.client.messages.create(timeout=120, **params)
+                with self.client.messages.stream(**params) as stream:
+                    if stream_reasoning and self.on_reasoning_delta:
+                        for event in stream:
+                            if event.type == "content_block_delta":
+                                if event.delta.type == "thinking_delta":
+                                    self.on_reasoning_delta(event.delta.thinking)
+                                elif event.delta.type == "text_delta":
+                                    self.on_reasoning_delta(event.delta.text)
+                    return stream.get_final_message()
             except (anthropic.APITimeoutError, anthropic.APIConnectionError, anthropic.InternalServerError, anthropic.RateLimitError) as e:
                 if attempt == max_attempts:
                     raise
@@ -422,7 +436,7 @@ class LLMAgent(Agent):
         num_commands = len(gs.commands)
 
         for _ in range(self.MAX_RETRIES):
-            response = self._api_call(**self._build_api_params())
+            response = self._api_call(stream_reasoning=True, **self._build_api_params())
             result = self._process_response(response, num_commands)
             if result is not None:
                 self.save_run_state()
@@ -464,7 +478,7 @@ class LLMAgent(Agent):
             }
 
         for _ in range(3):
-            response = self._api_call(**params)
+            response = self._api_call(stream_reasoning=True, **params)
             content = response.content
             self.messages.append({"role": "assistant", "content": content})
             self.last_reasoning = self._extract_reasoning(content)
