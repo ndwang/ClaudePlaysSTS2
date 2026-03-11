@@ -115,6 +115,7 @@ class RandomAgent(Agent):
 
 class LLMAgent(Agent):
     MAX_RETRIES = 5
+    SUMMARIZE_THRESHOLD = 60  # message count (~30 exchanges)
 
     def __init__(self, model: str = "claude-sonnet-4-20250514", thinking_budget: int = 0):
         import anthropic
@@ -125,6 +126,7 @@ class LLMAgent(Agent):
         self._pending_tool_use_id: str | None = None
         self._pending_kb_results: list[dict] = []
         self.last_reasoning: str = ""
+        self._summary: str = ""
 
         # Knowledge bases
         self.in_run_kb: dict[str, str] = {}
@@ -141,6 +143,9 @@ class LLMAgent(Agent):
         if self.in_run_kb:
             lines = [f"- {k}: {v}" for k, v in self.in_run_kb.items()]
             parts.append("\n\n## In-Run Knowledge (current run notes)\n" + "\n".join(lines))
+
+        if self._summary:
+            parts.append("\n\n## Run History (summarized)\n" + self._summary)
 
         return "".join(parts)
 
@@ -177,6 +182,53 @@ class LLMAgent(Agent):
                 text_parts.append(block.text.strip())
         return "\n".join(thinking_parts) if thinking_parts else "\n".join(text_parts)
 
+    def _messages_to_text(self) -> str:
+        """Convert message history to readable text for summarization."""
+        parts = []
+        for msg in self.messages:
+            content = msg["content"]
+            if isinstance(content, str):
+                parts.append(f"[State]\n{content}")
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict):
+                        if block.get("type") == "tool_result":
+                            text = block.get("content", "")
+                            if text and not text.startswith("OK:"):
+                                parts.append(f"[State]\n{text}")
+                    elif hasattr(block, "type"):
+                        if block.type == "tool_use":
+                            parts.append(f"[Action] {block.name}({json.dumps(block.input)})")
+                        elif block.type == "text" and block.text.strip():
+                            parts.append(f"[Agent] {block.text.strip()}")
+        return "\n\n".join(parts)
+
+    def _summarize(self) -> None:
+        """Compress conversation history into a summary."""
+        from prompts import SUMMARIZATION_PROMPT
+
+        history_text = self._messages_to_text()
+        if not history_text.strip():
+            return
+
+        # Include existing summary for recursive compression
+        content = ""
+        if self._summary:
+            content += f"[Previous Summary]\n{self._summary}\n\n"
+        content += f"[Recent History]\n{history_text}"
+
+        response = self.client.messages.create(
+            model=self.model,
+            system=SUMMARIZATION_PROMPT,
+            messages=[{"role": "user", "content": content}],
+            max_tokens=1024,
+        )
+
+        self._summary = response.content[0].text
+        self.messages.clear()
+        self._pending_tool_use_id = None
+        self._pending_kb_results = []
+
     @staticmethod
     def _serialize_messages(messages: list[dict]) -> list[dict]:
         """Convert messages to JSON-serializable dicts (handles Pydantic content blocks)."""
@@ -203,6 +255,7 @@ class LLMAgent(Agent):
             "pending_kb_results": self._pending_kb_results,
             "in_run_kb": self.in_run_kb,
             "last_reasoning": self.last_reasoning,
+            "summary": self._summary,
         }
         RUN_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
@@ -217,6 +270,7 @@ class LLMAgent(Agent):
         self._pending_kb_results = state.get("pending_kb_results", [])
         self.in_run_kb = state.get("in_run_kb", {})
         self.last_reasoning = state.get("last_reasoning", "")
+        self._summary = state.get("summary", "")
         return True
 
     @staticmethod
@@ -320,6 +374,10 @@ class LLMAgent(Agent):
         return None
 
     def decide(self, gs: GameState, briefing: str) -> dict:
+        # Summarize if history is getting long
+        if len(self.messages) >= self.SUMMARIZE_THRESHOLD:
+            self._summarize()
+
         # Build user message with tool_result(s)
         if self._pending_tool_use_id is None:
             self.messages.append({"role": "user", "content": briefing})
@@ -419,6 +477,7 @@ class LLMAgent(Agent):
         self._pending_tool_use_id = None
         self._pending_kb_results = []
         self.last_reasoning = ""
+        self._summary = ""
         self.in_run_kb.clear()
         self.clear_run_state()
         # cross_run_kb persists — reload in case it was updated externally

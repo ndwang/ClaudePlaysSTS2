@@ -32,3 +32,14 @@ The run is over. Reflect on what happened:
 - What strategic lessons should you remember for future runs?
 
 Use update_knowledge_base with store="cross_run" to save any insights. You do NOT need to call play_action."""
+
+
+SUMMARIZATION_PROMPT = """\
+You are summarizing your play history in Slay the Spire 2 for context continuity.
+
+Summarize the game history below into a concise narrative. Focus on:
+- Key events: fights, rewards taken/skipped, events chosen, path decisions
+- Strategic context: deck direction, HP trajectory, key relics/cards acquired
+- Lessons: what worked, what was risky, current plan going forward
+
+Be concise but preserve strategically relevant details. This summary replaces your conversation history — anything not included here will be forgotten."""
