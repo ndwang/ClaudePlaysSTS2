@@ -72,8 +72,8 @@
     <div class="value" id="time">0:00:00</div>
   </div>
   <div class="stat">
-    <div class="label" data-i18n="high_score">High Score</div>
-    <div class="value" id="high-score">0</div>
+    <div class="label" data-i18n="high_floor">High Floor</div>
+    <div class="value" id="high-floor">0</div>
   </div>
   <div class="stat">
     <div class="label" data-i18n="cost">Cost</div>
@@ -131,9 +131,9 @@
     roundEl.textContent = event.detail.value;
   });
 
-  // --- High Score ---
-  const hsEl = document.getElementById('high-score');
-  window.addEventListener('high-score-update', function(event) {
+  // --- High Floor ---
+  const hsEl = document.getElementById('high-floor');
+  window.addEventListener('high-floor-update', function(event) {
     hsEl.textContent = event.detail.value;
   });
 
@@ -163,7 +163,7 @@
   // Restore from state.json on load
   fetch('state.json').then(r => r.json()).then(state => {
     if (state.total_rounds !== undefined) roundEl.textContent = state.total_rounds;
-    if (state.high_score !== undefined) hsEl.textContent = state.high_score;
+    if (state.high_floor !== undefined) hsEl.textContent = state.high_floor;
     if (state.timer_elapsed !== undefined) {
       // Show accumulated time, but don't tick (agent may not be running)
       timerSync(state.timer_elapsed, 0);

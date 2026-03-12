@@ -107,7 +107,7 @@
   "client.round_header": " 第{round}轮 | {ctx} ",
   "overlay.rounds": "回合",
   "overlay.time": "用时",
-  "overlay.high_score": "最高分",
+  "overlay.high_floor": "最高层",
   "overlay.agent_reasoning": "AI 思考过程",
   "overlay.current_run_notes": "当前运行笔记",
   "overlay.learned_knowledge": "学到的知识",

@@ -107,7 +107,7 @@
   "client.round_header": " Round {round} | {ctx} ",
   "overlay.rounds": "Rounds",
   "overlay.time": "Time",
-  "overlay.high_score": "High Score",
+  "overlay.high_floor": "High Floor",
   "overlay.agent_reasoning": "Agent Reasoning",
   "overlay.current_run_notes": "Current Run Notes",
   "overlay.learned_knowledge": "Learned Knowledge",

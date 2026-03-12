@@ -208,7 +208,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             # Game over: display, reflect, and track before auto-resolve
             if gs.context == "game_over":
                 if gs.game_over and not game_over_seen:
-                    obs.on_game_over(gs.game_over.score)
+                    obs.on_game_over(gs.game_over.floor_reached)
                     print(f"\n{C.RED}{C.BOLD}{'=' * 60}")
                     print(f"{t('client.gameover_banner'):=^60}")
                     print(f"{'=' * 60}{C.RESET}")
@@ -353,7 +353,7 @@ if __name__ == "__main__":
     parser.add_argument("--obs-host", default="localhost", help="OBS WebSocket host")
     parser.add_argument("--obs-port", type=int, default=4455, help="OBS WebSocket port")
     parser.add_argument("--obs-password", default=os.environ.get("OBS_WEBSOCKET_PASSWORD", ""), help="OBS WebSocket password (or set OBS_WEBSOCKET_PASSWORD env var)")
-    parser.add_argument("--obs-reset", action="store_true", help="Reset OBS overlay (timer, rounds, high score)")
+    parser.add_argument("--obs-reset", action="store_true", help="Reset OBS overlay (timer, rounds, high floor)")
     parser.add_argument("--run-reset", action="store_true", help="Clear agent run state (conversation + in-run KB)")
     parser.add_argument("--knowledge-reset", action="store_true", help="Clear cross-run knowledge base")
     parser.add_argument("--reset", action="store_true", help="Reset all state (OBS + run + knowledge)")

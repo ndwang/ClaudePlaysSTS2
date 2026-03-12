@@ -53,7 +53,7 @@
 <h2>Stats Bar</h2>
 <div class="controls">
   <button onclick="emit(overlayFrame, 'round-update', {value: Math.floor(Math.random()*200)})">Random Round</button>
-  <button onclick="emit(overlayFrame, 'high-score-update', {value: Math.floor(Math.random()*5000)})">Random Score</button>
+  <button onclick="emit(overlayFrame, 'high-floor-update', {value: Math.floor(Math.random()*60)})">Random Floor</button>
   <button onclick="emit(overlayFrame, 'timer-control', {action: 'start'})">Start Timer</button>
   <button onclick="emit(overlayFrame, 'timer-control', {action: 'pause'})">Pause Timer</button>
   <button class="warn" onclick="emit(overlayFrame, 'timer-control', {action: 'restart'})">Restart Timer</button>

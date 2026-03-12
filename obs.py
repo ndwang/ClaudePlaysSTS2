@@ -33,7 +33,7 @@ class OBSOverlay:
         from i18n import write_overlay_locale
         write_overlay_locale(OBS_DIR)
         state = _load_state()
-        self.high_score: int = int(state.get("high_score", 0))
+        self.high_floor: int = int(state.get("high_floor", 0))
         self.total_rounds: int = int(state.get("total_rounds", 0))
         self.timer_elapsed: float = state.get("timer_elapsed", 0)  # seconds accumulated before this session
         self.timer_start: float = time.time()  # epoch when this session started
@@ -49,7 +49,7 @@ class OBSOverlay:
         except Exception as e:
             print(f"  OBS WebSocket not available ({e}). Overlays won't update.")
 
-        self._emit("high-score-update", {"value": self.high_score})
+        self._emit("high-floor-update", {"value": self.high_floor})
         self._emit("round-update", {"value": self.total_rounds})
         self._emit("timer-sync", {"elapsed": self.timer_elapsed, "epoch": self.timer_start})
 
@@ -71,7 +71,7 @@ class OBSOverlay:
 
     def _save(self) -> None:
         _save_state({
-            "high_score": self.high_score,
+            "high_floor": self.high_floor,
             "total_rounds": self.total_rounds,
             "timer_elapsed": self.timer_elapsed + (time.time() - self.timer_start),
             "kb": self._last_kb,
@@ -81,14 +81,14 @@ class OBSOverlay:
 
     def reset(self) -> None:
         """Reset all overlay values."""
-        self.high_score = 0
+        self.high_floor = 0
         self.total_rounds = 0
         self.timer_elapsed = 0
         self.timer_start = time.time()
         self._save()
         self._emit("timer-sync", {"elapsed": 0, "epoch": self.timer_start})
         self._emit("round-update", {"value": 0})
-        self._emit("high-score-update", {"value": 0})
+        self._emit("high-floor-update", {"value": 0})
 
     def on_round(self) -> None:
         """Call each decision round."""
@@ -147,9 +147,9 @@ class OBSOverlay:
         """Push lifetime cost to the OBS overlay."""
         self._emit("cost-update", {"value": cost_usd})
 
-    def on_game_over(self, score: int) -> None:
+    def on_game_over(self, floor: int) -> None:
         """Call when game over is reached."""
-        if score > self.high_score:
-            self.high_score = score
+        if floor > self.high_floor:
+            self.high_floor = floor
             self._save()
-            self._emit("high-score-update", {"value": self.high_score})
+            self._emit("high-floor-update", {"value": self.high_floor})
