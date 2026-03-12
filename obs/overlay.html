@@ -37,6 +37,28 @@
     color: #fff;
     letter-spacing: 2px;
   }
+  #model {
+    font-size: 24px;
+  }
+  @keyframes shimmer {
+    0%   { background-position: -200% center; }
+    100% { background-position: 200% center; }
+  }
+  .value.shimmer {
+    background: linear-gradient(
+      90deg,
+      #888 0%,
+      #fff 25%,
+      #64c8ff 50%,
+      #fff 75%,
+      #888 100%
+    );
+    background-size: 200% 100%;
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 2s ease-in-out infinite;
+  }
 </style>
 </head>
 <body>
@@ -56,6 +78,14 @@
   <div class="stat">
     <div class="label" data-i18n="cost">Cost</div>
     <div class="value" id="cost">$0.00</div>
+  </div>
+  <div class="stat">
+    <div class="label" data-i18n="status">Status</div>
+    <div class="value" id="status" data-i18n-value="status_waiting">Waiting</div>
+  </div>
+  <div class="stat">
+    <div class="label">Model</div>
+    <div class="value" id="model">-</div>
   </div>
 </div>
 <script>
@@ -113,6 +143,23 @@
     costEl.textContent = '$' + Number(event.detail.value).toFixed(2);
   });
 
+  // --- Model ---
+  const modelEl = document.getElementById('model');
+  window.addEventListener('model-update', function(event) {
+    modelEl.textContent = event.detail.value || '-';
+  });
+
+  // --- Status ---
+  const statusEl = document.getElementById('status');
+  const ACTIVE_STATUSES = new Set(['thinking', 'reflecting']);
+  let statusLocale = {};
+  window.addEventListener('status-update', function(event) {
+    const status = event.detail.value;
+    const key = 'status_' + status;
+    statusEl.textContent = statusLocale[key] || status;
+    statusEl.classList.toggle('shimmer', ACTIVE_STATUSES.has(status));
+  });
+
   // Restore from state.json on load
   fetch('state.json').then(r => r.json()).then(state => {
     if (state.total_rounds !== undefined) roundEl.textContent = state.total_rounds;
@@ -130,8 +177,13 @@
 
   // Load locale strings
   fetch('locale.json').then(r => r.json()).then(loc => {
+    statusLocale = loc;
     document.querySelectorAll('[data-i18n]').forEach(el => {
       const key = el.dataset.i18n;
+      if (loc[key]) el.textContent = loc[key];
+    });
+    document.querySelectorAll('[data-i18n-value]').forEach(el => {
+      const key = el.dataset.i18nValue;
       if (loc[key]) el.textContent = loc[key];
     });
   }).catch(() => {});

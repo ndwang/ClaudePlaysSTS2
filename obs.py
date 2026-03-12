@@ -135,6 +135,14 @@ class OBSOverlay:
         self._save()
         self._emit("kb-update", self._last_kb)
 
+    def on_status_update(self, status: str) -> None:
+        """Push agent status (e.g. 'thinking', 'reflecting', 'waiting') to the OBS overlay."""
+        self._emit("status-update", {"value": status})
+
+    def on_model_update(self, model: str) -> None:
+        """Push model name to the OBS overlay."""
+        self._emit("model-update", {"value": model})
+
     def on_cost_update(self, cost_usd: float) -> None:
         """Push lifetime cost to the OBS overlay."""
         self._emit("cost-update", {"value": cost_usd})

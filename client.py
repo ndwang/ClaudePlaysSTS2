@@ -62,6 +62,17 @@ CONTEXT_COLORS = {
 }
 
 
+def _short_model_name(model_id: str) -> str:
+    """Derive a short display name from a model ID, e.g. 'claude-sonnet-4-20250514' -> 'Sonnet 4'."""
+    import re as _re
+    m = _re.match(r"claude-(\w+)-(\d+(?:\.\d+)?)", model_id)
+    if m:
+        family = m.group(1).capitalize()
+        version = m.group(2)
+        return f"{family} {version}"
+    return model_id
+
+
 SPEED_DELAYS = {
     "fast": 0,
     "normal": 1.0,
@@ -144,6 +155,9 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
     if isinstance(agent, LLMAgent):
         obs.on_kb_update(agent.in_run_kb, agent.cross_run_kb)
         obs.on_cost_update(agent.token_tracker.cost_usd)
+        obs.on_model_update(_short_model_name(agent.model))
+    else:
+        obs.on_model_update("Miranda")
 
     # Attempt crash recovery for LLM agent
     recovered = not run_reset and isinstance(agent, LLMAgent) and agent.load_run_state()
@@ -203,6 +217,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
 
                     # Post-run reflection
                     print(f"\n{C.CYAN}{C.BOLD}{t('client.reflecting')}{C.RESET}")
+                    obs.on_status_update("reflecting")
                     obs.on_reasoning_clear()
                     try:
                         agent.reflect(briefing)
@@ -212,6 +227,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
                             obs.on_kb_update(agent.in_run_kb, agent.cross_run_kb)
                     except Exception as e:
                         print(f"{C.YELLOW}{t('client.reflect_failed', error=e)}{C.RESET}")
+                    obs.on_status_update("waiting")
 
                 if game_over_seen and confirm:
                     input(t("client.press_enter"))
@@ -271,6 +287,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
                 input(f"  {C.DIM}{t('client.press_execute')}{C.RESET}")
 
             # Get agent decision
+            obs.on_status_update("thinking")
             obs.on_reasoning_clear()
             cost_before = agent.token_tracker.cost_usd if isinstance(agent, LLMAgent) else 0
             decision = agent.decide(gs, briefing)
@@ -301,6 +318,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             print(f"{C.DIM}{'-' * 60}{C.RESET}")
 
             # Execute
+            obs.on_status_update("waiting")
             try:
                 result = api.send_action(cmd)
             except Exception as e:
