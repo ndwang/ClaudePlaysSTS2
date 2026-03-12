@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 class ThinkingBlock:
     type: str = "thinking"
     thinking: str = ""
+    signature: str = ""
 
     def model_dump(self):
         return dataclasses.asdict(self)
@@ -179,7 +180,7 @@ class AnthropicBackend(LLMBackend):
         content = []
         for block in message.content:
             if block.type == "thinking":
-                content.append(ThinkingBlock(thinking=block.thinking))
+                content.append(ThinkingBlock(thinking=block.thinking, signature=getattr(block, "signature", "")))
             elif block.type == "text":
                 content.append(TextBlock(text=block.text))
             elif block.type == "tool_use":

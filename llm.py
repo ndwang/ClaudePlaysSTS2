@@ -543,23 +543,23 @@ class LLMAgent(Agent):
             self._pending_tool_use_id = None
             self._pending_kb_results = []
 
-        # Use auto tool_choice so agent can call KB tools or just respond with text
-        params = {
-            "model": self.model,
-            "system": self._build_system_prompt(),
-            "tools": _build_tools(),
-            "messages": self._serialize_messages(self.messages),
-            "max_tokens": 2048,
-            "tool_choice": {"type": "auto"},
-        }
-        if self.thinking_budget > 0:
-            params["max_tokens"] = self.thinking_budget + 2048
-            params["thinking"] = {
-                "type": "enabled",
-                "budget_tokens": self.thinking_budget,
-            }
-
         for _ in range(3):
+            # Rebuild params each iteration so new messages are included
+            params = {
+                "model": self.model,
+                "system": self._build_system_prompt(),
+                "tools": _build_tools(),
+                "messages": self._serialize_messages(self.messages),
+                "max_tokens": 2048,
+                "tool_choice": {"type": "auto"},
+            }
+            if self.thinking_budget > 0:
+                params["max_tokens"] = self.thinking_budget + 2048
+                params["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": self.thinking_budget,
+                }
+
             response = self._api_call(stream_reasoning=True, **params)
             content = response.content
             self.messages.append({"role": "assistant", "content": content})
