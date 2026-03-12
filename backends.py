@@ -85,14 +85,24 @@ class AnthropicBackend(LLMBackend):
     def call(self, *, model, system, messages, max_tokens, tools=None,
              tool_choice=None, thinking=None,
              on_reasoning_delta=None, stream_reasoning=False) -> MessageResponse:
+        # Add cache_control breakpoints for prompt caching
+        cached_system = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+
+        cached_tools = None
+        if tools:
+            cached_tools = [t for t in tools]  # shallow copy
+            cached_tools[-1] = {**cached_tools[-1], "cache_control": {"type": "ephemeral"}}
+
+        cached_messages = self._add_message_cache_breakpoint(messages)
+
         params = {
             "model": model,
-            "system": system,
-            "messages": messages,
+            "system": cached_system,
+            "messages": cached_messages,
             "max_tokens": max_tokens,
         }
-        if tools:
-            params["tools"] = tools
+        if cached_tools:
+            params["tools"] = cached_tools
         if tool_choice:
             params["tool_choice"] = tool_choice
         if thinking:
@@ -121,6 +131,50 @@ class AnthropicBackend(LLMBackend):
                             attempt, max_attempts, e, wait)
                 time.sleep(wait)
 
+    @staticmethod
+    def _add_message_cache_breakpoint(messages: list[dict]) -> list[dict]:
+        """Add cache_control to the last content block of the last user message.
+
+        This ensures the entire conversation prefix (all prior turns) gets cached
+        for the next API call, so only the new turn needs to be prefilled.
+        """
+        if not messages:
+            return messages
+
+        # Find the last user message
+        last_user_idx = None
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "user":
+                last_user_idx = i
+                break
+
+        if last_user_idx is None:
+            return messages
+
+        # Shallow copy messages so we don't mutate the caller's list
+        messages = list(messages)
+        msg = messages[last_user_idx]
+        content = msg.get("content")
+
+        if isinstance(content, str):
+            messages[last_user_idx] = {
+                "role": "user",
+                "content": [{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}],
+            }
+        elif isinstance(content, list) and content:
+            content = list(content)  # shallow copy
+            last_block = content[-1]
+            # Handle both dict blocks and SDK objects
+            if hasattr(last_block, "model_dump"):
+                last_block = last_block.model_dump()
+            elif isinstance(last_block, dict):
+                last_block = {**last_block}
+            last_block["cache_control"] = {"type": "ephemeral"}
+            content[-1] = last_block
+            messages[last_user_idx] = {"role": "user", "content": content}
+
+        return messages
+
     def _convert_response(self, message) -> MessageResponse:
         content = []
         for block in message.content:
@@ -147,11 +201,19 @@ class AnthropicBackend(LLMBackend):
 
 class OpenAIBackend(LLMBackend):
     PRICING = {
+        # GPT-5 family
+        "gpt-5.4": {"input": 2.50, "output": 15.0, "cache_write": 2.50, "cache_read": 1.25},
+        "gpt-5.2": {"input": 1.75, "output": 14.0, "cache_write": 1.75, "cache_read": 0.175},
+        "gpt-5.1": {"input": 1.25, "output": 10.0, "cache_write": 1.25, "cache_read": 0.125},
+        "gpt-5-mini": {"input": 0.25, "output": 2.0, "cache_write": 0.25, "cache_read": 0.025},
+        "gpt-5": {"input": 1.25, "output": 10.0, "cache_write": 1.25, "cache_read": 0.125},
+        # GPT-4 family
         "gpt-4.1": {"input": 2.0, "output": 8.0, "cache_write": 2.0, "cache_read": 0.50},
         "gpt-4.1-mini": {"input": 0.40, "output": 1.60, "cache_write": 0.40, "cache_read": 0.10},
         "gpt-4.1-nano": {"input": 0.10, "output": 0.40, "cache_write": 0.10, "cache_read": 0.025},
         "gpt-4o": {"input": 2.5, "output": 10.0, "cache_write": 2.5, "cache_read": 1.25},
         "gpt-4o-mini": {"input": 0.15, "output": 0.60, "cache_write": 0.15, "cache_read": 0.075},
+        # Reasoning models
         "o3": {"input": 2.0, "output": 8.0, "cache_write": 2.0, "cache_read": 1.0},
         "o4-mini": {"input": 1.10, "output": 4.40, "cache_write": 1.10, "cache_read": 0.275},
     }
@@ -191,8 +253,8 @@ class OpenAIBackend(LLMBackend):
                 elif tc_type == "auto":
                     params["tool_choice"] = "auto"
 
-        # For reasoning models (o-series), map thinking budget to reasoning effort
-        is_reasoning_model = any(model.startswith(p) for p in ("o1", "o3", "o4"))
+        # For reasoning models (o-series and GPT-5 family), map thinking budget to reasoning effort
+        is_reasoning_model = any(model.startswith(p) for p in ("o1", "o3", "o4", "gpt-5"))
         if thinking and is_reasoning_model:
             budget = thinking.get("budget_tokens", 0)
             if budget > 8000:
