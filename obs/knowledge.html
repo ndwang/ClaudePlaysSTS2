@@ -274,6 +274,61 @@
     });
   }).catch(() => {});
 
+  // Auto-scroll when content overflows
+  const container = document.getElementById('container');
+  const SCROLL_PX_PER_SEC = 30;   // pixels per second
+  const PAUSE_AT_END_MS = 3000;   // pause at bottom before resetting
+  const PAUSE_AT_TOP_MS = 2000;   // pause at top before scrolling again
+  let scrollRAF = null;
+  let lastTime = null;
+  let scrollPaused = false;
+
+  function startAutoScroll() {
+    if (scrollRAF) return;
+    lastTime = null;
+    scrollPaused = false;
+    scrollRAF = requestAnimationFrame(scrollStep);
+  }
+
+  function stopAutoScroll() {
+    if (scrollRAF) {
+      cancelAnimationFrame(scrollRAF);
+      scrollRAF = null;
+    }
+    lastTime = null;
+  }
+
+  function scrollStep(now) {
+    if (scrollPaused) { scrollRAF = requestAnimationFrame(scrollStep); return; }
+    if (!lastTime) { lastTime = now; scrollRAF = requestAnimationFrame(scrollStep); return; }
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
+
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    if (maxScroll <= 0) {
+      // No overflow, nothing to scroll
+      scrollRAF = requestAnimationFrame(scrollStep);
+      return;
+    }
+
+    container.scrollTop += SCROLL_PX_PER_SEC * dt;
+
+    if (container.scrollTop >= maxScroll) {
+      // Reached bottom — pause then reset to top
+      container.scrollTop = maxScroll;
+      scrollPaused = true;
+      setTimeout(() => {
+        container.scrollTop = 0;
+        scrollPaused = true;
+        setTimeout(() => { scrollPaused = false; lastTime = null; }, PAUSE_AT_TOP_MS);
+      }, PAUSE_AT_END_MS);
+    }
+
+    scrollRAF = requestAnimationFrame(scrollStep);
+  }
+
+  startAutoScroll();
+
   // Bridge: accept postMessage and re-dispatch as CustomEvent (for iframe testing)
   window.addEventListener('message', function(msg) {
     if (msg.data && msg.data._event) {
