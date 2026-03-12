@@ -245,7 +245,7 @@ class LLMAgent(Agent):
             "model": self.model,
             "system": self._build_system_prompt(),
             "tools": _build_tools(),
-            "messages": self.messages,
+            "messages": self._serialize_messages(self.messages),
         }
         if self.thinking_budget > 0:
             # Extended thinking: must use tool_choice=auto, model may not call tools
@@ -295,7 +295,7 @@ class LLMAgent(Agent):
         params = {
             "model": self.model,
             "system": self._build_system_prompt(),
-            "messages": self.messages,
+            "messages": self._serialize_messages(self.messages),
             "max_tokens": 1024,
         }
         if self.thinking_budget > 0:
@@ -548,7 +548,7 @@ class LLMAgent(Agent):
             "model": self.model,
             "system": self._build_system_prompt(),
             "tools": _build_tools(),
-            "messages": self.messages,
+            "messages": self._serialize_messages(self.messages),
             "max_tokens": 2048,
             "tool_choice": {"type": "auto"},
         }
