@@ -10,18 +10,18 @@ Follows the same philosophy as Claude Plays Pokemon: simplicity over complexity,
 
 ## Game Loop
 
-The loop mirrors Claude Plays Pokemon's structure. Game state is delivered as tool results, not pushed as separate user messages.
+Game state is delivered as tool results, not pushed as separate user messages.
 
 ```
 1. Initial prompt contains first state briefing (from /state/wait)
-2. Claude calls play_action(index=2, target=0)
+2. Agent calls play_action(index=2, target=0)
 3. Client executes action via POST /action, then polls /state/wait
 4. New state briefing returned as tool_result
-5. Claude calls play_action(...) again
+5. Agent calls play_action(...) again
 6. ...repeat
 ```
 
-If Claude responds with text but no tool call, the response is not added to history and the same context is retried — identical to the Pokemon approach. This works because observations and actions are coupled: you only get a new state by calling a tool.
+If the agent responds without calling a tool (possible when thinking is enabled and `tool_choice` is `auto`), the response is kept in history and a "you must call a tool" message is appended, then retried up to `MAX_RETRIES` times.
 
 ## Context Management
 
@@ -29,43 +29,49 @@ Two mechanisms:
 
 ### Conversation History + Summarization
 
-Full conversation history accumulates as the agent makes decisions. When it gets long (~30 exchanges, or at natural game boundaries like combat end), the agent is asked to write a summary. The history is then cleared and replaced with the compressed summary. Older summaries get recursively compressed, creating a telescoping effect: recent actions in full detail, older ones condensed.
+Full conversation history accumulates as the agent makes decisions. When the message count exceeds a threshold (~60 messages / ~30 exchanges), the agent is asked to write a summary. The history is then cleared and replaced with the compressed summary, which is prepended to the next briefing.
 
 STS2 state snapshots are nearly complete — each briefing includes the full hand, enemies, energy, deck, relics, etc. — so the agent needs less conversational memory than you'd expect. It can reason about the current tactical situation from a single snapshot. Memory matters most for strategic continuity across the run.
 
 ### Two-Level Knowledge Base
 
-**In-run KB**: A key-value dictionary the agent manages via tool calls during a run. Tracks deck strategy, fight takeaways, pathing plans — whatever the agent finds useful for the current run. Embedded in every prompt, survives summarization. Cleared between runs.
+**In-run KB**: A key-value dictionary the agent manages via tool calls during a run. Tracks deck strategy, fight takeaways, pathing plans — whatever the agent finds useful for the current run. Embedded in every system prompt, survives summarization. Cleared between runs.
 
-**Cross-run KB**: Persistent strategic knowledge that carries across runs. Stored to disk. The agent writes to it during post-run reflection (victory or defeat) and can also update it mid-run. Loaded into every run's system prompt. Examples: "Strength builds need block by Act 2", "avoid elites below 30 HP."
+**Cross-run KB**: Persistent strategic knowledge that carries across runs. Stored to disk (`knowledge.json`). The agent writes to it during post-run reflection (victory or defeat) and can also update it mid-run. Loaded into every system prompt. Examples: "Strength builds need block by Act 2", "avoid elites below 30 HP."
 
-Both are agent-controlled via an `update_knowledge_base` tool with add/edit/delete operations. No hardcoded schema imposed by the developer.
+Both are agent-controlled via an `update_knowledge_base` tool with `set` and `delete` operations. No hardcoded schema imposed by the developer.
 
-## Model-Agnostic Design
+## Multi-Provider Support
 
-The agent should not be locked to Claude. The core loop (tool-use, forced tool calling, knowledge base) works across providers. The LLM call should be abstracted behind an interface so provider-specific features (like extended thinking) are handled per-provider while the rest is shared.
+The agent is not locked to Claude. The `backends.py` module abstracts the LLM call behind an `LLMBackend` interface with two implementations:
+
+- **AnthropicBackend** — for `claude-*` models, using the Anthropic SDK with prompt caching and streaming
+- **OpenAIBackend** — for `gpt-*`, `o*` models, and any OpenAI-compatible endpoint (Ollama, vLLM, Together, LM Studio, etc.)
+
+Provider-specific features (extended thinking, reasoning effort, prompt caching, message format) are handled per-backend while the agent logic in `llm.py` stays provider-agnostic.
 
 ## Extended Thinking for Stream
 
-Where supported, use the model's thinking/reasoning feature to surface reasoning on stream:
-- Anthropic: extended thinking (`thinking` blocks)
-- OpenAI: reasoning via o-series models
-- Gemini: thinking mode
-- Open-source (vLLM): not yet available
+Where supported, the model's thinking/reasoning is streamed to the console and OBS overlay in real time:
+- **Anthropic**: extended thinking (`thinking` blocks), enabled via `--thinking-budget`
+- **OpenAI**: reasoning content from o-series and GPT-5 models
 
-Thinking blocks are extracted and displayed on stream for viewers. The action output remains clean and parseable. For models without thinking support, the agent's text output (alongside tool calls) can serve as visible reasoning instead.
+When thinking is enabled, `tool_choice` must be set to `auto` (Anthropic doesn't allow forced tool use with thinking). The agent retries if the model doesn't call a tool. For models without thinking, the agent's text output serves as visible reasoning instead.
 
 ## Prompt Assembly
 
 Each LLM call receives:
 
 ```
-System: game rules + strategy guide (static)
+System prompt:
+  - Game rules + strategy guide (static, from i18n)
+  - Cross-run knowledge base contents
+  - In-run knowledge base contents
 
-[Knowledge base contents — persistent, agent-controlled]
-[Summarized older history — if any]
-[Recent conversation history — tool_use/tool_result pairs]
-[Current state — either initial briefing or latest tool_result]
+Messages:
+  - [Summary of older history — if summarization has occurred]
+  - [Recent conversation history — tool_use/tool_result pairs]
+  - [Current state briefing — as tool_result or initial user message]
 ```
 
 ## Tools Available to Agent
@@ -73,20 +79,15 @@ System: game rules + strategy guide (static)
 | Tool | Purpose |
 |------|---------|
 | `play_action` | Submit the chosen action index + optional target. Returns the next game state as tool_result. |
-| `update_knowledge_base` | Add, edit, or delete entries in the in-run or cross-run knowledge base. |
+| `update_knowledge_base` | Set or delete entries in the in-run or cross-run knowledge base. |
 
-### Forced Tool Calling
+### Tool Calling Strategy
 
-The API is called with forced tool use so the agent must always call at least one tool (no text-only responses):
+Without thinking: `tool_choice: any` (Anthropic) / `required` (OpenAI) — the agent must call a tool every turn.
 
-| Provider | Parameter |
-|---|---|
-| Anthropic | `tool_choice: {"type": "any"}` |
-| OpenAI | `tool_choice: "required"` |
-| Gemini | `function_calling_config: {mode: "ANY"}` |
-| vLLM (open-source) | `tool_choice: "required"` (OpenAI-compatible) |
+With thinking enabled: `tool_choice: auto` — the agent may respond with text only. If it does, the response is kept in history with a retry prompt until it calls `play_action`.
 
-If the agent calls `update_knowledge_base` but not `play_action`, we process the KB update, return the result, and loop until `play_action` is called.
+If the agent calls `update_knowledge_base` but not `play_action`, the KB update is processed, the result returned, and the loop continues until `play_action` is called.
 
 ## Auto-Resolve Layer
 
@@ -94,16 +95,11 @@ A rule-based filter that handles trivial decisions without calling the LLM. Runs
 
 ### Auto-resolve (no LLM call)
 
-- `proceed` — forced advancement
-- `continue` — game over screens
+- `proceed` / `continue` — forced advancement, game over screens
+- `main_menu` — auto-selects start or continue run
 - `shop_open` — mechanical prerequisite before agent sees the shop
 - Gold rewards — always claim
-- Relic rewards — always claim (log it so the agent sees what it got)
-- Treasure proceed — relics already claimed
-
-### Consolidate (one LLM call for multiple steps)
-
-- Main menu → character select → embark: agent picks character, rest is automated
+- Relic rewards — always claim
 
 ### Agent decides
 
@@ -115,32 +111,16 @@ A rule-based filter that handles trivial decisions without calling the LLM. Runs
 - Rest site options
 - Shop purchases (buy vs leave)
 - Hand selection (discard/exhaust)
-
-## Summarization Triggers
-
-- Conversation history exceeds ~30 exchanges
-- Natural game boundaries (combat end, room transition) when history is non-trivial
-
-On trigger:
-1. Agent writes a summary of the recent history
-2. History is cleared, summary is prepended to next prompt
-3. Older summaries are recursively compressed
+- Character selection
 
 ## Crash Recovery
 
-The full conversation state (message history, in-run KB, summarization state) is persisted to disk after each action. On startup, if a saved state exists, the agent resumes from where it left off rather than starting fresh.
+The full conversation state (message history, pending tool results, in-run KB, summary) is persisted to `run_state.json` after each successful action. On startup, if a saved state exists, the agent resumes from where it left off. Old state files are archived (not deleted) when a new run begins.
 
 ## Stream Output
 
-Agent reasoning is pushed to OBS via the existing obs-websocket integration as browser source events — no terminal capture needed. The game state is already visible on screen; only the agent's thinking/reasoning text needs to be overlaid.
+Agent reasoning is streamed to OBS via obs-websocket as it's generated. The `on_reasoning_delta` callback pushes thinking text to both the console and the OBS overlay in real time. Stats (cost, rounds, model name, knowledge base) are also pushed to the overlay.
 
 ## Post-Run Reflection
 
-At the end of each run (victory or defeat), the agent is prompted to reflect and update the cross-run KB. Over multiple runs the agent builds up strategic knowledge from experience.
-
-## What Changes
-
-- `llm.py` — Tool-use loop, conversation history with summarization, knowledge base, extended thinking
-- `prompts.py` — System prompt with knowledge base and summarization instructions
-- `client.py` — Simplified: hands control to the agent loop, extracts thinking for stream display
-- `obs.py` — Display agent reasoning on stream
+At game over, the agent is prompted to reflect on the run and update the cross-run KB via `update_knowledge_base` tool calls. Over multiple runs the agent builds up strategic knowledge from experience. Reflection uses `tool_choice: auto` so the agent can mix text responses with KB updates.
