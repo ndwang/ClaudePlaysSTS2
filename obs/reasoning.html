@@ -72,11 +72,7 @@
   function pruneOldBlocks() {
     while (log.children.length > MAX_BLOCKS) {
       const old = log.firstElementChild;
-      old.style.opacity = '0';
-      old.style.maxHeight = '0';
-      old.style.marginBottom = '0';
-      old.style.paddingBottom = '0';
-      old.addEventListener('transitionend', () => old.remove(), { once: true });
+      old.remove();
     }
   }
 
