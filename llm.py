@@ -202,6 +202,7 @@ class LLMAgent(Agent):
         self.last_reasoning: str = ""
         self._summary: str = ""
         self.on_reasoning_delta: Callable[[str], None] | None = None
+        self.on_status_update: Callable[[str], None] | None = None
 
         # Knowledge bases
         self.in_run_kb: dict[str, str] = {}
@@ -490,7 +491,11 @@ class LLMAgent(Agent):
     def decide(self, gs: GameState, briefing: str) -> dict:
         # Summarize if history is getting long
         if len(self.messages) >= self.SUMMARIZE_THRESHOLD:
+            if self.on_status_update:
+                self.on_status_update("summarizing")
             self._summarize()
+            if self.on_status_update:
+                self.on_status_update("thinking")
 
         # Build user message with tool_result(s)
         # After summarization, prepend summary to the first user message

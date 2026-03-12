@@ -148,7 +148,7 @@
 
   // --- Status ---
   const statusEl = document.getElementById('status');
-  const ACTIVE_STATUSES = new Set(['thinking', 'reflecting']);
+  const ACTIVE_STATUSES = new Set(['thinking', 'reflecting', 'summarizing']);
   let statusLocale = {};
   window.addEventListener('status-update', function(event) {
     const status = event.detail.value;
