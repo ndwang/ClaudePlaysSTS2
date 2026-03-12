@@ -19,10 +19,15 @@
     padding: 16px;
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
-    scrollbar-width: none;
   }
-  #container::-webkit-scrollbar { display: none; }
+  #scroll-clip {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+  #scroll-inner {
+    will-change: transform;
+  }
 
   .section {
     margin-bottom: 16px;
@@ -59,10 +64,6 @@
   }
   .entry-value {
     color: #bbb;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
   }
   .entry-cursor::after {
     content: '\2588';
@@ -81,9 +82,11 @@
 </head>
 <body>
 <div id="container">
-  <div class="section" id="in-run-section">
-    <div class="section-header in-run" data-i18n="current_run_notes">Current Run Notes</div>
-    <div id="in-run-entries"><span class="empty" data-i18n="no_notes">No notes yet</span></div>
+  <div class="section-header in-run" data-i18n="current_run_notes">Current Run Notes</div>
+  <div id="scroll-clip">
+    <div id="scroll-inner">
+      <div id="in-run-entries"><span class="empty" data-i18n="no_notes">No notes yet</span></div>
+    </div>
   </div>
 </div>
 <script>
@@ -274,28 +277,23 @@
     });
   }).catch(() => {});
 
-  // Auto-scroll when content overflows
-  const container = document.getElementById('container');
+  // Auto-scroll when content overflows (using transform for reliability)
+  const scrollContainer = document.getElementById('scroll-clip');
+  const scrollInner = document.getElementById('scroll-inner');
   const SCROLL_PX_PER_SEC = 30;   // pixels per second
   const PAUSE_AT_END_MS = 3000;   // pause at bottom before resetting
   const PAUSE_AT_TOP_MS = 2000;   // pause at top before scrolling again
+  let scrollOffset = 0;           // current translateY offset (positive = scrolled up)
   let scrollRAF = null;
   let lastTime = null;
   let scrollPaused = false;
 
-  function startAutoScroll() {
-    if (scrollRAF) return;
-    lastTime = null;
-    scrollPaused = false;
-    scrollRAF = requestAnimationFrame(scrollStep);
+  function getMaxScroll() {
+    return Math.max(0, scrollInner.scrollHeight - scrollContainer.clientHeight);
   }
 
-  function stopAutoScroll() {
-    if (scrollRAF) {
-      cancelAnimationFrame(scrollRAF);
-      scrollRAF = null;
-    }
-    lastTime = null;
+  function applyScroll() {
+    scrollInner.style.transform = 'translateY(' + (-scrollOffset) + 'px)';
   }
 
   function scrollStep(now) {
@@ -304,30 +302,35 @@
     const dt = (now - lastTime) / 1000;
     lastTime = now;
 
-    const maxScroll = container.scrollHeight - container.clientHeight;
+    const maxScroll = getMaxScroll();
     if (maxScroll <= 0) {
-      // No overflow, nothing to scroll
+      // No overflow — reset position and wait
+      if (scrollOffset !== 0) { scrollOffset = 0; applyScroll(); }
       scrollRAF = requestAnimationFrame(scrollStep);
       return;
     }
 
-    container.scrollTop += SCROLL_PX_PER_SEC * dt;
+    scrollOffset += SCROLL_PX_PER_SEC * dt;
 
-    if (container.scrollTop >= maxScroll) {
+    if (scrollOffset >= maxScroll) {
       // Reached bottom — pause then reset to top
-      container.scrollTop = maxScroll;
+      scrollOffset = maxScroll;
+      applyScroll();
       scrollPaused = true;
       setTimeout(() => {
-        container.scrollTop = 0;
+        scrollOffset = 0;
+        applyScroll();
         scrollPaused = true;
         setTimeout(() => { scrollPaused = false; lastTime = null; }, PAUSE_AT_TOP_MS);
       }, PAUSE_AT_END_MS);
+    } else {
+      applyScroll();
     }
 
     scrollRAF = requestAnimationFrame(scrollStep);
   }
 
-  startAutoScroll();
+  scrollRAF = requestAnimationFrame(scrollStep);
 
   // Bridge: accept postMessage and re-dispatch as CustomEvent (for iframe testing)
   window.addEventListener('message', function(msg) {
