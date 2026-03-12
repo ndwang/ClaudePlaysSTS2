@@ -113,6 +113,7 @@
   "overlay.learned_knowledge": "学到的知识",
   "overlay.no_notes": "暂无笔记",
   "overlay.cost": "花费",
+  "overlay.model": "模型",
   "overlay.status": "状态",
   "overlay.status_waiting": "等待中",
   "overlay.status_thinking": "思考中",

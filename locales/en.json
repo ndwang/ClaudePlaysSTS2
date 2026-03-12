@@ -113,6 +113,7 @@
   "overlay.learned_knowledge": "Learned Knowledge",
   "overlay.no_notes": "No notes yet",
   "overlay.cost": "Cost",
+  "overlay.model": "Model",
   "overlay.status": "Status",
   "overlay.status_waiting": "Waiting",
   "overlay.status_thinking": "Thinking",
