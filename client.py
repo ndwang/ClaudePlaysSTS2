@@ -9,6 +9,7 @@ import time
 from api import STS2API
 from state import GameState
 from renderer import render, format_command
+from backends import create_backend
 from llm import Agent, RandomAgent, LLMAgent
 from obs import OBSOverlay
 from i18n import t, set_lang
@@ -65,12 +66,14 @@ CONTEXT_COLORS = {
 def _short_model_name(model_id: str) -> str:
     """Derive a short display name from a model ID, e.g. 'claude-sonnet-4-20250514' -> 'Sonnet 4'."""
     import re as _re
+    # Anthropic: claude-sonnet-4-20250514 -> Sonnet 4
     m = _re.match(r"claude-(\w+)-(\d+(?:\.\d+)?)", model_id)
     if m:
         family = m.group(1).capitalize()
         version = m.group(2)
         return f"{family} {version}"
-    return model_id
+    # OpenAI: gpt-4o, gpt-4.1-mini, o3, o4-mini etc.
+    return model_id.upper() if len(model_id) <= 2 else model_id
 
 
 SPEED_DELAYS = {
@@ -120,7 +123,8 @@ def auto_resolve(gs: GameState) -> dict | None:
 
 
 def run(base_url: str = "http://localhost:57541", agent_type: str = "random", model: str = "claude-sonnet-4-20250514", delay: float = 0,
-        thinking_budget: int = 0, obs_host: str = "localhost", obs_port: int = 4455, obs_password: str = "", obs_reset: bool = False,
+        thinking_budget: int = 0, llm_base_url: str = "", llm_api_key: str = "",
+        obs_host: str = "localhost", obs_port: int = 4455, obs_password: str = "", obs_reset: bool = False,
         run_reset: bool = False, knowledge_reset: bool = False,
         confirm: bool = False, log: str = ""):
     log_file = None
@@ -130,7 +134,11 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
 
     api = STS2API(base_url)
     gs = GameState()
-    agent: Agent = RandomAgent() if agent_type == "random" else LLMAgent(model, thinking_budget=thinking_budget)
+    if agent_type == "random":
+        agent: Agent = RandomAgent()
+    else:
+        backend = create_backend(model, base_url=llm_base_url or None, api_key=llm_api_key or None)
+        agent = LLMAgent(model, thinking_budget=thinking_budget, backend=backend)
 
     obs = OBSOverlay(obs_host=obs_host, obs_port=obs_port, obs_password=obs_password)
 
@@ -350,8 +358,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="STS2 Agent Client")
     parser.add_argument("--url", default="http://localhost:57541", help="Server base URL")
     parser.add_argument("--agent", default="random", choices=["random", "llm"], help="Agent type")
-    parser.add_argument("--model", default="claude-sonnet-4-20250514", help="Claude model ID (for llm agent)")
+    parser.add_argument("--model", default="claude-sonnet-4-20250514", help="Model ID: claude-* for Anthropic, gpt-*/o* for OpenAI")
     parser.add_argument("--thinking-budget", type=int, default=0, help="Extended thinking token budget (0=disabled, e.g. 4000)")
+    parser.add_argument("--llm-base-url", default="", help="Base URL for OpenAI-compatible API (Ollama, vLLM, Together, etc.)")
+    parser.add_argument("--llm-api-key", default="", help="API key for the LLM provider (overrides env var)")
     parser.add_argument("--speed", default="normal", choices=SPEED_DELAYS.keys(), help="Decision speed (fast/normal/slow)")
     parser.add_argument("--lang", default="en", choices=["en", "zh"], help="Display language (en/zh)")
     parser.add_argument("--obs-host", default="localhost", help="OBS WebSocket host")
@@ -371,7 +381,7 @@ if __name__ == "__main__":
     set_lang(args.lang)
 
     run(base_url=args.url, agent_type=args.agent, model=args.model, delay=SPEED_DELAYS[args.speed],
-        thinking_budget=args.thinking_budget,
+        thinking_budget=args.thinking_budget, llm_base_url=args.llm_base_url, llm_api_key=args.llm_api_key,
         obs_host=args.obs_host, obs_port=args.obs_port, obs_password=args.obs_password, obs_reset=args.obs_reset,
         run_reset=args.run_reset, knowledge_reset=args.knowledge_reset,
         confirm=args.confirm, log=args.log)

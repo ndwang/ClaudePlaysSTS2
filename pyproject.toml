@@ -5,6 +5,7 @@ description = "LLM-powered client for the STS2 agent mod"
 requires-python = ">=3.12"
 dependencies = [
     "anthropic",
+    "openai",
     "obsws-python",
     "requests",
 ]

@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from pathlib import Path
 
+from backends import LLMBackend, MessageResponse, Usage, create_backend
 from i18n import t
 from state import GameState
 
@@ -18,29 +19,14 @@ RUN_STATE_FILE = Path(__file__).parent / "run_state.json"
 TOKEN_USAGE_FILE = Path(__file__).parent / "token_usage.json"
 ARCHIVE_DIR = Path(__file__).parent / "archive"
 
-# Pricing per 1M tokens (USD)
-MODEL_PRICING = {
-    "claude-sonnet-4": {"input": 3.0, "output": 15.0, "cache_write": 3.75, "cache_read": 0.30},
-    "claude-opus-4":   {"input": 15.0, "output": 75.0, "cache_write": 18.75, "cache_read": 1.50},
-    "claude-haiku-3":  {"input": 0.80, "output": 4.0, "cache_write": 1.0, "cache_read": 0.08},
-}
-
-
-def _get_pricing(model: str) -> dict[str, float] | None:
-    """Match a model ID to its pricing entry."""
-    for prefix in sorted(MODEL_PRICING, key=len, reverse=True):
-        if model.startswith(prefix):
-            return MODEL_PRICING[prefix]
-    return None
-
 
 def _compute_cost(usage: dict[str, int], pricing: dict[str, float]) -> float:
     """Compute cost in USD from token counts and pricing rates."""
     return (
         usage.get("input_tokens", 0) * pricing["input"]
         + usage.get("output_tokens", 0) * pricing["output"]
-        + usage.get("cache_creation_input_tokens", 0) * pricing["cache_write"]
-        + usage.get("cache_read_input_tokens", 0) * pricing["cache_read"]
+        + usage.get("cache_creation_input_tokens", 0) * pricing.get("cache_write", 0)
+        + usage.get("cache_read_input_tokens", 0) * pricing.get("cache_read", 0)
     ) / 1_000_000
 
 
@@ -70,20 +56,19 @@ class TokenTracker:
         data = {**self.usage, "cost_usd": self.cost_usd}
         TOKEN_USAGE_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
-    def record(self, response_usage, model: str) -> None:
+    def record(self, response_usage: Usage, pricing: dict[str, float] | None) -> None:
         """Accumulate usage from an API response."""
-        self.usage["input_tokens"] += getattr(response_usage, "input_tokens", 0)
-        self.usage["output_tokens"] += getattr(response_usage, "output_tokens", 0)
-        self.usage["cache_creation_input_tokens"] += getattr(response_usage, "cache_creation_input_tokens", 0) or 0
-        self.usage["cache_read_input_tokens"] += getattr(response_usage, "cache_read_input_tokens", 0) or 0
+        self.usage["input_tokens"] += response_usage.input_tokens
+        self.usage["output_tokens"] += response_usage.output_tokens
+        self.usage["cache_creation_input_tokens"] += response_usage.cache_creation_input_tokens
+        self.usage["cache_read_input_tokens"] += response_usage.cache_read_input_tokens
 
-        pricing = _get_pricing(model)
         if pricing:
             call_usage = {
-                "input_tokens": getattr(response_usage, "input_tokens", 0),
-                "output_tokens": getattr(response_usage, "output_tokens", 0),
-                "cache_creation_input_tokens": getattr(response_usage, "cache_creation_input_tokens", 0) or 0,
-                "cache_read_input_tokens": getattr(response_usage, "cache_read_input_tokens", 0) or 0,
+                "input_tokens": response_usage.input_tokens,
+                "output_tokens": response_usage.output_tokens,
+                "cache_creation_input_tokens": response_usage.cache_creation_input_tokens,
+                "cache_read_input_tokens": response_usage.cache_read_input_tokens,
             }
             self.cost_usd += _compute_cost(call_usage, pricing)
 
@@ -206,9 +191,9 @@ class LLMAgent(Agent):
     MAX_RETRIES = 5
     SUMMARIZE_THRESHOLD = 60  # message count (~30 exchanges)
 
-    def __init__(self, model: str = "claude-sonnet-4-20250514", thinking_budget: int = 0):
-        import anthropic
-        self.client = anthropic.Anthropic()
+    def __init__(self, model: str = "claude-sonnet-4-20250514", thinking_budget: int = 0,
+                 backend: LLMBackend | None = None):
+        self.backend = backend or create_backend(model)
         self.model = model
         self.thinking_budget = thinking_budget
         self.messages: list[dict] = []
@@ -225,35 +210,20 @@ class LLMAgent(Agent):
         # Token tracking
         self.token_tracker = TokenTracker()
 
-    def _api_call(self, stream_reasoning: bool = False, **params):
-        """Call the Anthropic API with streaming, retries on transient errors.
+    def _api_call(self, stream_reasoning: bool = False, **params) -> MessageResponse:
+        """Call the LLM backend with streaming and retries.
 
-        Uses streaming to avoid total-time timeouts (only idle time matters).
         If stream_reasoning is True, emits thinking/text deltas via on_reasoning_delta callback.
-        Returns the final accumulated Message object (same shape as non-streaming).
+        Returns a normalized MessageResponse.
         """
-        import anthropic
-        log = logging.getLogger(__name__)
-        max_attempts = 3
-        for attempt in range(1, max_attempts + 1):
-            try:
-                with self.client.messages.stream(**params) as stream:
-                    if stream_reasoning and self.on_reasoning_delta:
-                        for event in stream:
-                            if event.type == "content_block_delta":
-                                if event.delta.type == "thinking_delta":
-                                    self.on_reasoning_delta(event.delta.thinking)
-                                elif event.delta.type == "text_delta":
-                                    self.on_reasoning_delta(event.delta.text)
-                    message = stream.get_final_message()
-                    self.token_tracker.record(message.usage, self.model)
-                    return message
-            except (anthropic.APITimeoutError, anthropic.APIConnectionError, anthropic.InternalServerError, anthropic.RateLimitError) as e:
-                if attempt == max_attempts:
-                    raise
-                wait = 2 ** attempt
-                log.warning("API call failed (attempt %d/%d): %s. Retrying in %ds...", attempt, max_attempts, e, wait)
-                time.sleep(wait)
+        response = self.backend.call(
+            stream_reasoning=stream_reasoning,
+            on_reasoning_delta=self.on_reasoning_delta if stream_reasoning else None,
+            **params,
+        )
+        pricing = self.backend.get_pricing(self.model)
+        self.token_tracker.record(response.usage, pricing)
+        return response
 
     def _build_system_prompt(self) -> str:
         from prompts import system_prompt
