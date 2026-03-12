@@ -328,9 +328,12 @@ class LLMAgent(Agent):
                         d = block.model_dump()
                         # Remove SDK-only fields that the API rejects
                         d.pop("parsed_output", None)
-                        serialized.append(d)
                     else:
-                        serialized.append(block)
+                        d = block
+                    # Drop thinking blocks without a valid signature
+                    if isinstance(d, dict) and d.get("type") == "thinking" and not d.get("signature"):
+                        continue
+                    serialized.append(d)
                 out.append({"role": msg["role"], "content": serialized})
             else:
                 out.append(msg)
@@ -364,13 +367,19 @@ class LLMAgent(Agent):
 
     @staticmethod
     def _clean_loaded_messages(messages: list[dict]) -> list[dict]:
-        """Strip SDK-only fields (e.g. parsed_output) from loaded messages."""
+        """Strip SDK-only fields and invalid thinking blocks from loaded messages."""
         for msg in messages:
             content = msg.get("content")
             if isinstance(content, list):
+                cleaned = []
                 for block in content:
                     if isinstance(block, dict):
                         block.pop("parsed_output", None)
+                        # Drop thinking blocks without a valid signature
+                        if block.get("type") == "thinking" and not block.get("signature"):
+                            continue
+                    cleaned.append(block)
+                msg["content"] = cleaned
         return messages
 
     @staticmethod
