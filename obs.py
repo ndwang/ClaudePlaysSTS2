@@ -45,9 +45,9 @@ class OBSOverlay:
         try:
             import obsws_python as obs
             self._ws = obs.ReqClient(host=obs_host, port=obs_port, password=obs_password, timeout=3)
-            log.info("Connected to OBS WebSocket at %s:%d", obs_host, obs_port)
+            print(f"  OBS WebSocket connected ({obs_host}:{obs_port})")
         except Exception as e:
-            log.warning("OBS WebSocket not available (%s). Overlays won't update.", e)
+            print(f"  OBS WebSocket not available ({e}). Overlays won't update.")
 
         self._emit("high-score-update", {"value": self.high_score})
         self._emit("round-update", {"value": self.total_rounds})
@@ -67,7 +67,7 @@ class OBSOverlay:
                 },
             )
         except Exception as e:
-            log.warning("Failed to emit '%s': %s", event_name, e)
+            print(f"  OBS emit '{event_name}' failed: {e}")
 
     def _save(self) -> None:
         _save_state({
