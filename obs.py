@@ -98,7 +98,12 @@ class OBSOverlay:
 
     def on_exit(self) -> None:
         """Call when the agent is shutting down."""
-        pass
+        if self._ws:
+            try:
+                self._ws.disconnect()
+            except Exception:
+                pass
+            self._ws = None
 
     def on_reasoning_clear(self) -> None:
         """Clear the reasoning overlay for a new decision."""
