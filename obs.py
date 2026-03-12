@@ -80,7 +80,7 @@ class OBSOverlay:
         self._emit("timer-sync", {"elapsed": self.timer_elapsed, "epoch": self.timer_start})
 
     def reset(self) -> None:
-        """Reset all overlay values."""
+        """Reset OBS overlay counters (timer, rounds, high floor)."""
         self.high_floor = 0
         self.total_rounds = 0
         self.timer_elapsed = 0
@@ -89,6 +89,18 @@ class OBSOverlay:
         self._emit("timer-sync", {"elapsed": 0, "epoch": self.timer_start})
         self._emit("round-update", {"value": 0})
         self._emit("high-floor-update", {"value": 0})
+
+    def reset_run(self) -> None:
+        """Reset run-scoped state (reasoning blocks, in-run KB)."""
+        self._reasoning_blocks = []
+        self._current_reasoning = ""
+        self._last_kb["in_run"] = {}
+        self._save()
+
+    def reset_knowledge(self) -> None:
+        """Reset cross-run KB from overlay."""
+        self._last_kb["cross_run"] = {}
+        self._save()
 
     def on_round(self) -> None:
         """Call each decision round."""

@@ -144,6 +144,10 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
     # Apply reset flags
     if obs_reset:
         obs.reset()
+    if run_reset:
+        obs.reset_run()
+    if knowledge_reset:
+        obs.reset_knowledge()
     if isinstance(agent, LLMAgent):
         if knowledge_reset:
             LLMAgent.clear_cross_run_kb()
