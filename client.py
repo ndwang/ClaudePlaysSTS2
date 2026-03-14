@@ -84,7 +84,7 @@ SPEED_DELAYS = {
 }
 
 
-def auto_resolve(gs: GameState) -> dict | None:
+def auto_resolve(gs: GameState, preferred_character: str = "") -> dict | None:
     """Return action dict if the state can be auto-resolved without the agent."""
     commands = gs.commands
     if not commands:
@@ -97,6 +97,19 @@ def auto_resolve(gs: GameState) -> dict | None:
         for i, cmd in enumerate(commands):
             if cmd.get("type") in ("proceed", "continue"):
                 return {"action": i}
+
+    # Character select with preferred character -> auto-select + embark
+    if gs.context == "character_select" and preferred_character:
+        # If not yet selected, select the preferred character
+        if gs.selected_character != preferred_character:
+            for i, cmd in enumerate(commands):
+                if cmd.get("type") == "select_character" and cmd.get("name", "").lower() == preferred_character.lower():
+                    return {"action": i}
+        # Already selected -> embark
+        if gs.selected_character and gs.selected_character.lower() == preferred_character.lower():
+            for i, cmd in enumerate(commands):
+                if cmd.get("type") == "embark":
+                    return {"action": i}
 
     # Main menu -> start or continue run
     if gs.context == "main_menu":
@@ -126,7 +139,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
         thinking_budget: int = 0, llm_base_url: str = "", llm_api_key: str = "",
         obs_host: str = "localhost", obs_port: int = 4455, obs_password: str = "", obs_reset: bool = False,
         run_reset: bool = False, knowledge_reset: bool = False,
-        confirm: bool = False, log: str = ""):
+        confirm: bool = False, log: str = "", character: str = ""):
     log_file = None
     if log:
         log_file = open(log, "a", encoding="utf-8")
@@ -249,8 +262,13 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
                 game_over_seen = False
 
             # Auto-resolve trivial decisions
-            auto = auto_resolve(gs)
+            auto = auto_resolve(gs, preferred_character=character)
             if auto is not None:
+                # Track character when auto-embarking
+                if gs.context == "character_select" and isinstance(agent, LLMAgent):
+                    cmd_auto = commands[auto["action"]]
+                    if cmd_auto.get("type") == "embark" and gs.selected_character:
+                        agent.character = gs.selected_character
                 cmd = gs.commands[auto["action"]].copy()
                 cmd_type = cmd.get("type", "?")
                 print(f"  {C.DIM}{t('client.auto', cmd_type=cmd_type)}{C.RESET}")
@@ -309,6 +327,11 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             cmd = gs.commands[action_idx].copy()
             if "target" in decision:
                 cmd["targetIndex"] = decision["target"]
+
+            # Track character selection — capture when embarking (character is confirmed)
+            if gs.context == "character_select" and cmd.get("type") == "embark" and isinstance(agent, LLMAgent):
+                if gs.selected_character:
+                    agent.character = gs.selected_character
 
             enemies = gs.combat.enemies if gs.combat else []
             formatted = format_command(cmd, enemies=enemies)
@@ -372,6 +395,7 @@ if __name__ == "__main__":
     parser.add_argument("--run-reset", action="store_true", help="Clear agent run state (conversation + in-run KB)")
     parser.add_argument("--knowledge-reset", action="store_true", help="Clear cross-run knowledge base")
     parser.add_argument("--reset", action="store_true", help="Reset all state (OBS + run + knowledge)")
+    parser.add_argument("--character", default="", help="Auto-select this character (e.g. ironclad, silent)")
     parser.add_argument("--confirm", action="store_true", help="Pause for human confirmation at end of each run")
     parser.add_argument("--log", default="", help="Path to log file (appends clean text, no ANSI codes)")
     args = parser.parse_args()
@@ -385,4 +409,4 @@ if __name__ == "__main__":
         thinking_budget=args.thinking_budget, llm_base_url=args.llm_base_url, llm_api_key=args.llm_api_key,
         obs_host=args.obs_host, obs_port=args.obs_port, obs_password=args.obs_password, obs_reset=args.obs_reset,
         run_reset=args.run_reset, knowledge_reset=args.knowledge_reset,
-        confirm=args.confirm, log=args.log)
+        confirm=args.confirm, log=args.log, character=args.character)

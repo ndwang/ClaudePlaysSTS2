@@ -204,6 +204,9 @@ class LLMAgent(Agent):
         self.on_reasoning_delta: Callable[[str], None] | None = None
         self.on_status_update: Callable[[str], None] | None = None
 
+        # Character identity (injected into system prompt, survives summarization)
+        self.character: str = ""
+
         # Knowledge bases
         self.in_run_kb: dict[str, str] = {}
         self.cross_run_kb: dict[str, str] = _load_cross_run_kb()
@@ -229,6 +232,9 @@ class LLMAgent(Agent):
     def _build_system_prompt(self) -> str:
         from prompts import system_prompt
         parts = [system_prompt()]
+
+        if self.character:
+            parts.append(t("prompt.character", character=self.character))
 
         if self.cross_run_kb:
             lines = [f"- {k}: {v}" for k, v in self.cross_run_kb.items()]
@@ -349,6 +355,7 @@ class LLMAgent(Agent):
             "in_run_kb": self.in_run_kb,
             "last_reasoning": self.last_reasoning,
             "summary": self._summary,
+            "character": self.character,
         }
         RUN_STATE_FILE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
 
@@ -364,6 +371,7 @@ class LLMAgent(Agent):
         self.in_run_kb = state.get("in_run_kb", {})
         self.last_reasoning = state.get("last_reasoning", "")
         self._summary = state.get("summary", "")
+        self.character = state.get("character", "")
         return True
 
     @staticmethod
@@ -616,6 +624,7 @@ class LLMAgent(Agent):
         self._pending_kb_results = []
         self.last_reasoning = ""
         self._summary = ""
+        self.character = ""
         self.in_run_kb.clear()
         self.clear_run_state()
         # cross_run_kb persists — reload in case it was updated externally
