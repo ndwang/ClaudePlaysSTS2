@@ -67,6 +67,9 @@ def _render_combat(gs: GameState) -> str:
         header += t("combat.companion", name=comp.name, hp=comp.hp, max_hp=comp.max_hp)
         if comp.block:
             header += t("combat.companion_block", block=comp.block)
+        if comp.powers:
+            pw_strs = [f"{pw.name} {pw.amount}: {pw.description}" for pw in comp.powers]
+            header += t("combat.powers_suffix", powers='; '.join(pw_strs))
     lines = [header]
 
     # Enemies
