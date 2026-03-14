@@ -172,6 +172,7 @@
     if (state.total_rounds !== undefined) roundEl.textContent = state.total_rounds;
     if (state.high_floor !== undefined) hsEl.textContent = state.high_floor;
     if (state.deaths !== undefined) deathsEl.textContent = state.deaths;
+    if (state.model) modelEl.textContent = state.model;
     if (state.timer_elapsed !== undefined) {
       // Show accumulated time, but don't tick (agent may not be running)
       timerSync(state.timer_elapsed, 0);

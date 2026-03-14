@@ -41,6 +41,7 @@ class OBSOverlay:
         self._last_kb: dict = state.get("kb", {"in_run": {}, "cross_run": {}})
         self._reasoning_blocks: list[dict] = state.get("reasoning_blocks", [])
         self._current_reasoning: str = ""
+        self._model: str = state.get("model", "")
         self._ws = None
 
         try:
@@ -77,6 +78,7 @@ class OBSOverlay:
             "total_rounds": self.total_rounds,
             "deaths": self.deaths,
             "timer_elapsed": self.timer_elapsed + (time.time() - self.timer_start),
+            "model": self._model,
             "kb": self._last_kb,
             "reasoning_blocks": self._reasoning_blocks,
         })
@@ -158,6 +160,8 @@ class OBSOverlay:
 
     def on_model_update(self, model: str) -> None:
         """Push model name to the OBS overlay."""
+        self._model = model
+        self._save()
         self._emit("model-update", {"value": model})
 
     def on_cost_update(self, cost_usd: float) -> None:
