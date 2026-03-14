@@ -27,7 +27,7 @@ The agent manages its own knowledge base across decisions and runs, building up 
 
 ## Prerequisites
 
-- **Slay the Spire 2** with the [STS2 Agent mod](../sts2agent/) loaded
+- **Slay the Spire 2** with the [STS2 Agent mod](https://github.com/ndwang/sts2-remote) loaded
 - **Python 3.12+** with [uv](https://docs.astral.sh/uv/)
 - An API key for at least one supported LLM provider
 
