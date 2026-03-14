@@ -73,6 +73,10 @@
     <div class="value" id="high-floor">0</div>
   </div>
   <div class="stat">
+    <div class="label" data-i18n="deaths">Deaths</div>
+    <div class="value" id="deaths">0</div>
+  </div>
+  <div class="stat">
     <div class="label" data-i18n="cost">Cost</div>
     <div class="value" id="cost">$0.00</div>
   </div>
@@ -134,6 +138,12 @@
     hsEl.textContent = event.detail.value;
   });
 
+  // --- Deaths ---
+  const deathsEl = document.getElementById('deaths');
+  window.addEventListener('deaths-update', function(event) {
+    deathsEl.textContent = event.detail.value;
+  });
+
   // --- Cost ---
   const costEl = document.getElementById('cost');
   window.addEventListener('cost-update', function(event) {
@@ -161,6 +171,7 @@
   fetch('state.json').then(r => r.json()).then(state => {
     if (state.total_rounds !== undefined) roundEl.textContent = state.total_rounds;
     if (state.high_floor !== undefined) hsEl.textContent = state.high_floor;
+    if (state.deaths !== undefined) deathsEl.textContent = state.deaths;
     if (state.timer_elapsed !== undefined) {
       // Show accumulated time, but don't tick (agent may not be running)
       timerSync(state.timer_elapsed, 0);

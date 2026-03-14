@@ -35,6 +35,7 @@ class OBSOverlay:
         state = _load_state()
         self.high_floor: int = int(state.get("high_floor", 0))
         self.total_rounds: int = int(state.get("total_rounds", 0))
+        self.deaths: int = int(state.get("deaths", 0))
         self.timer_elapsed: float = state.get("timer_elapsed", 0)  # seconds accumulated before this session
         self.timer_start: float = time.time()  # epoch when this session started
         self._last_kb: dict = state.get("kb", {"in_run": {}, "cross_run": {}})
@@ -51,6 +52,7 @@ class OBSOverlay:
 
         self._emit("high-floor-update", {"value": self.high_floor})
         self._emit("round-update", {"value": self.total_rounds})
+        self._emit("deaths-update", {"value": self.deaths})
         self._emit("timer-sync", {"elapsed": self.timer_elapsed, "epoch": self.timer_start})
 
     def _emit(self, event_name: str, event_data: dict) -> None:
@@ -73,6 +75,7 @@ class OBSOverlay:
         _save_state({
             "high_floor": self.high_floor,
             "total_rounds": self.total_rounds,
+            "deaths": self.deaths,
             "timer_elapsed": self.timer_elapsed + (time.time() - self.timer_start),
             "kb": self._last_kb,
             "reasoning_blocks": self._reasoning_blocks,
@@ -83,12 +86,14 @@ class OBSOverlay:
         """Reset OBS overlay counters (timer, rounds, high floor)."""
         self.high_floor = 0
         self.total_rounds = 0
+        self.deaths = 0
         self.timer_elapsed = 0
         self.timer_start = time.time()
         self._save()
         self._emit("timer-sync", {"elapsed": 0, "epoch": self.timer_start})
         self._emit("round-update", {"value": 0})
         self._emit("high-floor-update", {"value": 0})
+        self._emit("deaths-update", {"value": 0})
 
     def reset_run(self) -> None:
         """Reset run-scoped state (reasoning blocks, in-run KB)."""
@@ -159,9 +164,12 @@ class OBSOverlay:
         """Push lifetime cost to the OBS overlay."""
         self._emit("cost-update", {"value": cost_usd})
 
-    def on_game_over(self, floor: int) -> None:
+    def on_game_over(self, floor: int, victory: bool = False) -> None:
         """Call when game over is reached."""
         if floor > self.high_floor:
             self.high_floor = floor
-            self._save()
             self._emit("high-floor-update", {"value": self.high_floor})
+        if not victory:
+            self.deaths += 1
+            self._emit("deaths-update", {"value": self.deaths})
+        self._save()

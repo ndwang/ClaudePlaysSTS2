@@ -6,6 +6,7 @@ import re
 import signal
 import sys
 import time
+from pathlib import Path
 from api import STS2API
 from state import GameState
 from renderer import render, format_command
@@ -15,6 +16,20 @@ from obs import OBSOverlay
 from i18n import t, set_lang
 
 ANSI_RE = re.compile(r"\033\[[0-9;]*m")
+
+SFX_DIR = Path(__file__).parent / "obs"
+
+def _play_sfx(filename: str) -> None:
+    """Play a .wav sound effect in the background (Windows)."""
+    path = SFX_DIR / filename
+    if not path.exists():
+        return
+    try:
+        import winsound
+        import threading
+        threading.Thread(target=winsound.PlaySound, args=(str(path), winsound.SND_FILENAME), daemon=True).start()
+    except Exception:
+        pass
 
 
 class TeeWriter:
@@ -82,6 +97,12 @@ SPEED_DELAYS = {
     "slow": 3.0,
     "step": -1,
 }
+
+
+def on_run_end(gs: GameState, obs: OBSOverlay, victory: bool | None) -> None:
+    """Called when the game leaves the game_over screen. Extend this for post-run hooks."""
+    if victory is not None:
+        _play_sfx("yippee.wav" if victory else "gunshot.wav")
 
 
 def auto_resolve(gs: GameState, preferred_character: str = "") -> dict | None:
@@ -205,6 +226,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
     signal.signal(signal.SIGTERM, _signal_handler)
 
     game_over_seen = False
+    last_victory = None  # True/False after game_over, None if no game ended yet
     round_num = 0
     round_counted = False  # track to avoid double-counting on retries
     print(f"{C.CYAN}{C.BOLD}{t('client.starting')}{C.RESET}")
@@ -234,7 +256,8 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             # Game over: display, reflect, and track before auto-resolve
             if gs.context == "game_over":
                 if gs.game_over and not game_over_seen:
-                    obs.on_game_over(gs.game_over.floor_reached)
+                    obs.on_game_over(gs.game_over.floor_reached, gs.game_over.victory)
+                    last_victory = gs.game_over.victory
                     print(f"\n{C.RED}{C.BOLD}{'=' * 60}")
                     print(f"{t('client.gameover_banner'):=^60}")
                     print(f"{'=' * 60}{C.RESET}")
@@ -259,6 +282,9 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
                     input(t("client.press_enter"))
                 game_over_seen = True
             else:
+                if game_over_seen:
+                    on_run_end(gs, obs, last_victory)
+                    last_victory = None
                 game_over_seen = False
 
             # Auto-resolve trivial decisions

@@ -112,6 +112,7 @@
   "overlay.current_run_notes": "本局游戏笔记",
   "overlay.learned_knowledge": "学到的知识",
   "overlay.no_notes": "暂无笔记",
+  "overlay.deaths": "死亡",
   "overlay.cost": "花费",
   "overlay.model": "模型",
   "overlay.status": "状态",

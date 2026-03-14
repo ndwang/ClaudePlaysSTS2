@@ -112,6 +112,7 @@
   "overlay.current_run_notes": "Current Run Notes",
   "overlay.learned_knowledge": "Learned Knowledge",
   "overlay.no_notes": "No notes yet",
+  "overlay.deaths": "Deaths",
   "overlay.cost": "Cost",
   "overlay.model": "Model",
   "overlay.status": "Status",
