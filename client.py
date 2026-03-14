@@ -183,9 +183,14 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
         def _on_reasoning_delta(text):
             print(f"{C.CYAN}{text}{C.RESET}", end="", flush=True)
             obs.on_reasoning_delta(text)
+        def _on_route_plan(prompt, result):
+            print(f"\n  {C.MAGENTA}{C.BOLD}[Route Planner]{C.RESET}")
+            print(f"  {C.DIM}Prompt: {prompt}{C.RESET}")
+            print(f"  {C.MAGENTA}{result}{C.RESET}\n")
         agent.on_reasoning_delta = _on_reasoning_delta
         agent.on_status_update = obs.on_status_update
         agent.get_map = api.get_map
+        agent.on_route_plan = _on_route_plan
 
     # Apply reset flags
     if obs_reset:

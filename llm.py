@@ -218,6 +218,7 @@ class LLMAgent(Agent):
         self.on_reasoning_delta: Callable[[str], None] | None = None
         self.on_status_update: Callable[[str], None] | None = None
         self.get_map: Callable[[], dict] | None = None  # callback to fetch full map from API
+        self.on_route_plan: Callable[[str, str], None] | None = None  # callback(prompt, result) for terminal display
 
         # Character identity (injected into system prompt, survives summarization)
         self.character: str = ""
@@ -463,7 +464,7 @@ class LLMAgent(Agent):
                           prompt=prompt)
 
         if self.on_status_update:
-            self.on_status_update("planning route")
+            self.on_status_update("planning_route")
 
         log = logging.getLogger(__name__)
         log.info("Route planner subagent invoked: %s", prompt)
@@ -481,7 +482,12 @@ class LLMAgent(Agent):
 
         # Extract text from response
         text_parts = [b.text for b in response.content if b.type == "text"]
-        return "\n".join(text_parts) if text_parts else t("llm.plan_route_no_response")
+        result = "\n".join(text_parts) if text_parts else t("llm.plan_route_no_response")
+
+        if self.on_route_plan:
+            self.on_route_plan(prompt, result)
+
+        return result
 
     def _process_response(self, response, num_commands: int | None) -> dict | None:
         """Process a response, handle KB calls, return action dict if play_action found.
