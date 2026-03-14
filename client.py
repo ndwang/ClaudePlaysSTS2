@@ -339,12 +339,6 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             briefing = render(gs)
             print(briefing)
 
-            # Artificial delay or manual step before deciding
-            if delay > 0:
-                time.sleep(delay)
-            elif delay < 0:
-                input(f"  {C.DIM}{t('client.press_execute')}{C.RESET}")
-
             # Get agent decision
             obs.on_status_update("thinking")
             obs.on_reasoning_clear()
@@ -380,6 +374,12 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
                 print(f"  {C.DIM}${turn_cost:.4f} this turn | ${tt.cost_usd:.2f} lifetime{C.RESET}")
                 obs.on_cost_update(tt.cost_usd)
             print(f"{C.DIM}{'-' * 60}{C.RESET}")
+
+            # Artificial delay or manual step before executing
+            if delay > 0:
+                time.sleep(delay)
+            elif delay < 0:
+                input(f"  {C.DIM}{t('client.press_execute')}{C.RESET}")
 
             # Execute
             obs.on_status_update("waiting")
