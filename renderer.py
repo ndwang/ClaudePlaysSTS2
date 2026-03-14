@@ -63,7 +63,7 @@ def _render_combat(gs: GameState) -> str:
     header = t("combat.header", round=c.round, hp=p.hp, max_hp=p.max_hp, energy=c.energy, block=c.block)
     if c.stars:
         header += t("combat.stars", stars=c.stars)
-    for comp in p.companions:
+    for comp in c.companions:
         header += t("combat.companion", name=comp.name, hp=comp.hp, max_hp=comp.max_hp)
         if comp.block:
             header += t("combat.companion_block", block=comp.block)
