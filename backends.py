@@ -64,7 +64,8 @@ class LLMBackend(ABC):
              max_tokens: int, tools: list[dict] | None = None,
              tool_choice: dict | None = None, thinking: dict | None = None,
              on_reasoning_delta: Callable[[str], None] | None = None,
-             stream_reasoning: bool = False) -> MessageResponse:
+             stream_reasoning: bool = False,
+             cache: bool = True) -> MessageResponse:
         ...
 
     def get_pricing(self, model: str) -> dict[str, float] | None:
@@ -85,25 +86,25 @@ class AnthropicBackend(LLMBackend):
 
     def call(self, *, model, system, messages, max_tokens, tools=None,
              tool_choice=None, thinking=None,
-             on_reasoning_delta=None, stream_reasoning=False) -> MessageResponse:
-        # Add cache_control breakpoints for prompt caching
-        cached_system = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
-
-        cached_tools = None
-        if tools:
-            cached_tools = [t for t in tools]  # shallow copy
-            cached_tools[-1] = {**cached_tools[-1], "cache_control": {"type": "ephemeral"}}
-
-        cached_messages = self._add_message_cache_breakpoint(messages)
+             on_reasoning_delta=None, stream_reasoning=False,
+             cache=True) -> MessageResponse:
+        if cache:
+            system_param = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
+            if tools:
+                tools = [t for t in tools]  # shallow copy
+                tools[-1] = {**tools[-1], "cache_control": {"type": "ephemeral"}}
+            messages = self._add_message_cache_breakpoint(messages)
+        else:
+            system_param = [{"type": "text", "text": system}]
 
         params = {
             "model": model,
-            "system": cached_system,
-            "messages": cached_messages,
+            "system": system_param,
+            "messages": messages,
             "max_tokens": max_tokens,
         }
-        if cached_tools:
-            params["tools"] = cached_tools
+        if tools:
+            params["tools"] = tools
         if tool_choice:
             params["tool_choice"] = tool_choice
         if thinking:
@@ -231,7 +232,8 @@ class OpenAIBackend(LLMBackend):
 
     def call(self, *, model, system, messages, max_tokens, tools=None,
              tool_choice=None, thinking=None,
-             on_reasoning_delta=None, stream_reasoning=False) -> MessageResponse:
+             on_reasoning_delta=None, stream_reasoning=False,
+             cache=True) -> MessageResponse:
         oai_messages = self._convert_messages(system, messages)
 
         params = {

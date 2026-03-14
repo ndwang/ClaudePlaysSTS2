@@ -185,6 +185,7 @@ def run(base_url: str = "http://localhost:57541", agent_type: str = "random", mo
             obs.on_reasoning_delta(text)
         agent.on_reasoning_delta = _on_reasoning_delta
         agent.on_status_update = obs.on_status_update
+        agent.get_map = api.get_map
 
     # Apply reset flags
     if obs_reset:

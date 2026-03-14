@@ -124,6 +124,20 @@ def _build_tools() -> list[dict]:
                 "required": ["store", "operation", "key"],
             },
         },
+        {
+            "name": "plan_route",
+            "description": t("tool.plan_route.desc"),
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": t("tool.plan_route.prompt_desc"),
+                    },
+                },
+                "required": ["prompt"],
+            },
+        },
     ]
 
 
@@ -203,6 +217,7 @@ class LLMAgent(Agent):
         self._summary: str = ""
         self.on_reasoning_delta: Callable[[str], None] | None = None
         self.on_status_update: Callable[[str], None] | None = None
+        self.get_map: Callable[[], dict] | None = None  # callback to fetch full map from API
 
         # Character identity (injected into system prompt, survives summarization)
         self.character: str = ""
@@ -430,6 +445,44 @@ class LLMAgent(Agent):
         else:
             return t("llm.kb_error_unknown_op", operation=operation)
 
+    def _run_route_planner(self, prompt: str) -> str:
+        """Run a subagent to analyze the full map and plan a route."""
+        if not self.get_map:
+            return t("llm.plan_route_unavailable")
+
+        try:
+            map_data = self.get_map()
+        except Exception as e:
+            return t("llm.plan_route_map_error", error=str(e))
+
+        map_json = json.dumps(map_data, indent=2, ensure_ascii=False)
+
+        subagent_system = t("prompt.route_planner_system")
+        subagent_user = t("prompt.route_planner_user",
+                          map_json=map_json,
+                          prompt=prompt)
+
+        if self.on_status_update:
+            self.on_status_update("planning route")
+
+        log = logging.getLogger(__name__)
+        log.info("Route planner subagent invoked: %s", prompt)
+
+        response = self._api_call(
+            model=self.model,
+            system=subagent_system,
+            messages=[{"role": "user", "content": subagent_user}],
+            max_tokens=2048,
+            cache=False,
+        )
+
+        if self.on_status_update:
+            self.on_status_update("thinking")
+
+        # Extract text from response
+        text_parts = [b.text for b in response.content if b.type == "text"]
+        return "\n".join(text_parts) if text_parts else t("llm.plan_route_no_response")
+
     def _process_response(self, response, num_commands: int | None) -> dict | None:
         """Process a response, handle KB calls, return action dict if play_action found.
 
@@ -463,6 +516,13 @@ class LLMAgent(Agent):
                     "type": "tool_result",
                     "tool_use_id": block.id,
                     "content": msg,
+                })
+            elif block.name == "plan_route":
+                route_result = self._run_route_planner(block.input.get("prompt", ""))
+                results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": route_result,
                 })
             elif block.name == "play_action" and num_commands is not None:
                 index = block.input.get("index")
@@ -601,7 +661,7 @@ class LLMAgent(Agent):
                         "tool_use_id": block.id,
                         "content": msg,
                     })
-                elif block.name == "play_action":
+                elif block.name in ("play_action", "plan_route"):
                     results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
