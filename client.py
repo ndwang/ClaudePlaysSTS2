@@ -81,11 +81,13 @@ CONTEXT_COLORS = {
 def _short_model_name(model_id: str) -> str:
     """Derive a short display name from a model ID, e.g. 'claude-sonnet-4-20250514' -> 'Sonnet 4'."""
     import re as _re
-    # Anthropic: claude-sonnet-4-20250514 -> Sonnet 4
-    m = _re.match(r"claude-(\w+)-(\d+(?:\.\d+)?)", model_id)
+    # Anthropic: claude-sonnet-4-6-20250514 -> Sonnet 4.6
+    m = _re.match(r"claude-(\w+)-(\d+)(?:-(\d+))?", model_id)
     if m:
         family = m.group(1).capitalize()
         version = m.group(2)
+        if m.group(3) and not _re.match(r"2\d{7}$", m.group(3)):
+            version += f".{m.group(3)}"
         return f"{family} {version}"
     # OpenAI: gpt-4o, gpt-4.1-mini, o3, o4-mini etc.
     return model_id.upper() if len(model_id) <= 2 else model_id
