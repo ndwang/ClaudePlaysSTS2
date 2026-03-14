@@ -1,6 +1,8 @@
 {
   "combat.header": "COMBAT Round {round} | HP:{hp}/{max_hp} Energy:{energy} Block:{block}",
   "combat.stars": " Stars:{stars}",
+  "combat.companion": " | {name} HP:{hp}/{max_hp}",
+  "combat.companion_block": " Block:{block}",
   "combat.enemies": "\nEnemies:",
   "combat.attack": "Attack {damage}",
   "combat.hits": "x{hits}",

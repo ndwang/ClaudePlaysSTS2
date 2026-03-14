@@ -1,6 +1,8 @@
 {
   "combat.header": "战斗 第{round}回合 | 生命:{hp}/{max_hp} 能量:{energy} 格挡:{block}",
   "combat.stars": " 星:{stars}",
+  "combat.companion": " | {name} 生命:{hp}/{max_hp}",
+  "combat.companion_block": " 格挡:{block}",
   "combat.enemies": "\n敌人:",
   "combat.attack": "攻击 {damage}",
   "combat.hits": "x{hits}",

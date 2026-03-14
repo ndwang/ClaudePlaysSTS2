@@ -218,6 +218,15 @@ class CharacterInfo:
 
 
 @dataclass
+class Companion:
+    name: str
+    hp: int
+    max_hp: int
+    block: int = 0
+    powers: list[Power] = field(default_factory=list)
+
+
+@dataclass
 class PlayerState:
     hp: int = 0
     max_hp: int = 0
@@ -225,6 +234,7 @@ class PlayerState:
     relics: list[Relic] = field(default_factory=list)
     potions: list[Potion] = field(default_factory=list)
     deck: list[Card] = field(default_factory=list)
+    companions: list[Companion] = field(default_factory=list)
 
 
 @dataclass
@@ -286,6 +296,21 @@ class GameState:
                 Card(c["name"], c["description"], c["cost"])
                 for c in p.get("deck", [])
             ]
+
+        # Companions
+        self.player.companions = [
+            Companion(
+                name=cp["name"],
+                hp=cp["hp"],
+                max_hp=cp["maxHp"],
+                block=cp.get("block", 0),
+                powers=[
+                    Power(pw["name"], pw["amount"], pw["description"])
+                    for pw in cp.get("powers", [])
+                ],
+            )
+            for cp in raw.get("companions", [])
+        ]
 
         # Context-specific state
         if "combat" in raw:
